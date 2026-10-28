@@ -1,0 +1,102 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+	"sync"
+)
+
+var (
+	ErrDuplicateMethod   = errors.New("payment method already registered")
+	ErrUnsupportedMethod = errors.New("unsupported payment method")
+	ErrInvalidAmount     = errors.New("amount must be positive")
+)
+
+type Receipt struct {
+	Method string
+	Amount int64
+	Fee    int64
+}
+
+type PaymentProcessor interface {
+	Method() string
+	Pay(amountCents int64) (Receipt, error)
+}
+
+// feeProcessor: in Go a small struct with a fee function replaces three subclasses.
+type feeProcessor struct {
+	method string
+	fee    func(int64) int64
+}
+
+func (p *feeProcessor) Method() string { return p.method }
+
+func (p *feeProcessor) Pay(amount int64) (Receipt, error) {
+	if amount <= 0 {
+		return Receipt{}, ErrInvalidAmount
+	}
+	return Receipt{Method: p.method, Amount: amount, Fee: p.fee(amount)}, nil
+}
+
+func NewCardProcessor() PaymentProcessor {
+	return &feeProcessor{"card", func(a int64) int64 { return a * 2 / 100 }}
+}
+func NewUpiProcessor() PaymentProcessor {
+	return &feeProcessor{"upi", func(int64) int64 { return 0 }}
+}
+func NewWalletProcessor() PaymentProcessor {
+	return &feeProcessor{"wallet", func(a int64) int64 { return a / 100 }}
+}
+
+type PaymentFactory struct {
+	mu       sync.RWMutex
+	registry map[string]func() PaymentProcessor
+}
+
+func NewPaymentFactory() *PaymentFactory {
+	return &PaymentFactory{registry: map[string]func() PaymentProcessor{}}
+}
+
+func normalise(m string) string { return strings.ToLower(strings.TrimSpace(m)) }
+
+func (f *PaymentFactory) Register(method string, ctor func() PaymentProcessor) error {
+	key := normalise(method)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, dup := f.registry[key]; dup {
+		return fmt.Errorf("%w: %s", ErrDuplicateMethod, key)
+	}
+	f.registry[key] = ctor
+	return nil
+}
+
+func (f *PaymentFactory) Create(method string) (PaymentProcessor, error) {
+	f.mu.RLock()
+	ctor, ok := f.registry[normalise(method)]
+	f.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedMethod, method)
+	}
+	return ctor(), nil
+}
+
+func (f *PaymentFactory) SupportedMethods() []string {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	names := make([]string, 0, len(f.registry))
+	for k := range f.registry {
+		names = append(names, k)
+	}
+	slices.Sort(names)
+	return names
+}
+
+func NewDefaultFactory() *PaymentFactory {
+	f := NewPaymentFactory()
+	_ = f.Register("card", NewCardProcessor)
+	_ = f.Register("upi", NewUpiProcessor)
+	_ = f.Register("wallet", NewWalletProcessor)
+	return f
+}

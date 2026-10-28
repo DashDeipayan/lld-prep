@@ -1,0 +1,298 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"sync"
+	"time"
+)
+
+// ======================= Provided =======================
+
+type VehicleClass int
+
+const (
+	Mini VehicleClass = iota
+	Sedan
+	SUV
+)
+
+type TripStatus int
+
+const (
+	Assigned TripStatus = iota
+	Arrived
+	InProgress
+	Completed
+	Cancelled
+)
+
+type Location struct{ X, Y int }
+
+func (l Location) Distance(o Location) int { return abs(l.X-o.X) + abs(l.Y-o.Y) }
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+type DriverInfo struct {
+	ID     string
+	Class  VehicleClass
+	Loc    Location
+	Rating float64
+}
+
+type Rate struct{ Base, PerKm, PerMin int64 }
+
+type MatchingStrategy interface {
+	Match(pickup Location, cands []DriverInfo) (string, bool)
+}
+
+type PricingStrategy interface {
+	Fare(cls VehicleClass, distance int, d time.Duration) int64
+}
+
+var (
+	ErrNotFound          = errors.New("not found")
+	ErrNoDriver          = errors.New("no driver available")
+	ErrIllegalTransition = errors.New("illegal transition")
+	ErrRiderBusy         = errors.New("rider already has an active trip")
+	ErrDriverBusy        = errors.New("driver is on a trip")
+)
+
+// ======================= Strategies =======================
+
+type nearest struct{ max int }
+
+func NewNearestDriver(maxDistance int) MatchingStrategy { return nearest{maxDistance} }
+
+func (n nearest) Match(p Location, cands []DriverInfo) (string, bool) {
+	var best *DriverInfo
+	for i := range cands {
+		c := &cands[i]
+		d := c.Loc.Distance(p)
+		if d > n.max {
+			continue
+		}
+		if best == nil {
+			best = c
+			continue
+		}
+		bd := best.Loc.Distance(p)
+		if d < bd || (d == bd && (c.Rating > best.Rating || (c.Rating == best.Rating && c.ID < best.ID))) {
+			best = c
+		}
+	}
+	if best == nil {
+		return "", false
+	}
+	return best.ID, true
+}
+
+type standardPricing struct {
+	rates map[VehicleClass]Rate
+	surge int64
+}
+
+func NewStandardPricing(rates map[VehicleClass]Rate, surgePercent int64) PricingStrategy {
+	return standardPricing{rates, surgePercent}
+}
+
+func (p standardPricing) Fare(cls VehicleClass, distance int, d time.Duration) int64 {
+	r := p.rates[cls]
+	minutes := int64((d + time.Minute - 1) / time.Minute)
+	return (r.Base + r.PerKm*int64(distance) + r.PerMin*minutes) * p.surge / 100
+}
+
+// ======================= Model =======================
+
+type driver struct {
+	info         DriverInfo
+	online, busy bool
+}
+
+type trip struct {
+	id, rider string
+	driver    *driver
+	from, to  Location
+	cls       VehicleClass
+	status    TripStatus
+	startedAt time.Time
+}
+
+var allowed = map[TripStatus][]TripStatus{
+	Assigned:   {Arrived, Cancelled},
+	Arrived:    {InProgress, Cancelled},
+	InProgress: {Completed},
+}
+
+// ======================= Service =======================
+
+type RideService struct {
+	mu       sync.Mutex
+	matching MatchingStrategy
+	pricing  PricingStrategy
+	clock    func() time.Time
+	drivers  map[string]*driver
+	trips    map[string]*trip
+	active   map[string]string // rider -> trip
+	next     int
+}
+
+func NewRideService(m MatchingStrategy, p PricingStrategy, clock func() time.Time) *RideService {
+	return &RideService{matching: m, pricing: p, clock: clock, drivers: map[string]*driver{}, trips: map[string]*trip{}, active: map[string]string{}}
+}
+
+func (s *RideService) AddDriver(id string, cls VehicleClass, loc Location, rating float64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, dup := s.drivers[id]; dup {
+		return fmt.Errorf("duplicate driver %s", id)
+	}
+	s.drivers[id] = &driver{info: DriverInfo{id, cls, loc, rating}}
+	return nil
+}
+
+func (s *RideService) driver(id string) (*driver, error) {
+	d, ok := s.drivers[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: driver %s", ErrNotFound, id)
+	}
+	return d, nil
+}
+
+func (s *RideService) trip(id string) (*trip, error) {
+	t, ok := s.trips[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: trip %s", ErrNotFound, id)
+	}
+	return t, nil
+}
+
+func (s *RideService) SetOnline(id string, online bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.driver(id)
+	if err != nil {
+		return err
+	}
+	if !online && d.busy {
+		return ErrDriverBusy
+	}
+	d.online = online
+	return nil
+}
+
+func (s *RideService) UpdateLocation(id string, loc Location) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, err := s.driver(id)
+	if err != nil {
+		return err
+	}
+	d.info.Loc = loc
+	return nil
+}
+
+// RequestRide matches and marks the driver busy under one lock: no double assignment.
+func (s *RideService) RequestRide(rider string, from, to Location, cls VehicleClass) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, busy := s.active[rider]; busy {
+		return "", ErrRiderBusy
+	}
+	var cands []DriverInfo
+	for _, d := range s.drivers {
+		if d.online && !d.busy && d.info.Class == cls {
+			cands = append(cands, d.info)
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool { return cands[i].ID < cands[j].ID })
+	id, ok := s.matching.Match(from, cands)
+	if !ok {
+		return "", ErrNoDriver
+	}
+	d := s.drivers[id]
+	d.busy = true
+	s.next++
+	t := &trip{id: fmt.Sprintf("R%d", s.next), rider: rider, driver: d, from: from, to: to, cls: cls, status: Assigned}
+	s.trips[t.id] = t
+	s.active[rider] = t.id
+	return t.id, nil
+}
+
+func (s *RideService) DriverOf(tripID string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, err := s.trip(tripID)
+	if err != nil {
+		return "", err
+	}
+	return t.driver.info.ID, nil
+}
+
+func (s *RideService) Status(tripID string) (TripStatus, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, err := s.trip(tripID)
+	if err != nil {
+		return 0, err
+	}
+	return t.status, nil
+}
+
+func (s *RideService) transition(id string, to TripStatus) (*trip, error) {
+	t, err := s.trip(id)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(allowed[t.status], to) {
+		return nil, fmt.Errorf("%w: %d -> %d", ErrIllegalTransition, t.status, to)
+	}
+	t.status = to
+	if to == Completed || to == Cancelled {
+		t.driver.busy = false
+		delete(s.active, t.rider)
+	}
+	return t, nil
+}
+
+func (s *RideService) Arrived(tripID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.transition(tripID, Arrived)
+	return err
+}
+
+func (s *RideService) Start(tripID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, err := s.transition(tripID, InProgress)
+	if err == nil {
+		t.startedAt = s.clock()
+	}
+	return err
+}
+
+func (s *RideService) End(tripID string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, err := s.transition(tripID, Completed)
+	if err != nil {
+		return 0, err
+	}
+	t.driver.info.Loc = t.to
+	return s.pricing.Fare(t.cls, t.from.Distance(t.to), s.clock().Sub(t.startedAt)), nil
+}
+
+func (s *RideService) Cancel(tripID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.transition(tripID, Cancelled)
+	return err
+}

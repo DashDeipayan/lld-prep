@@ -1,0 +1,13 @@
+{
+  "title": "Payment Processor Registry (Factory)",
+  "difficulty": "easy",
+  "summary": "Build an open-for-extension factory: processors register themselves by name, and adding a payment method never edits the factory.",
+  "minutes": 35,
+  "tags": ["factory", "registry", "open-closed"],
+  "hints": [
+    "Store constructors, not instances: `Map<String, Supplier<PaymentProcessor>>` in Java, `map[string]func() PaymentProcessor` in Go.",
+    "Normalise keys with lower-case on both `register` and `create`.",
+    "`create` must return a **fresh** instance each call. That's why you store a supplier.",
+    "Fees use integer maths: card is `amount * 2 / 100`, wallet is `amount / 100`, UPI is 0."
+  ]
+}

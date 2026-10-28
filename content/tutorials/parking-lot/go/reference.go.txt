@@ -1,0 +1,292 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+)
+
+// ======================= Provided (do not change) =======================
+
+type SpotSize int
+
+const (
+	Small SpotSize = iota
+	Medium
+	Large
+)
+
+type VehicleType int
+
+const (
+	Bike VehicleType = iota
+	Car
+	Truck
+)
+
+func (t VehicleType) MinSize() SpotSize { return [...]SpotSize{Small, Medium, Large}[t] }
+
+type Vehicle struct {
+	Plate string
+	Type  VehicleType
+}
+
+type Ticket struct {
+	ID, Plate, SpotID string
+	Entry             time.Time
+}
+
+type Receipt struct {
+	TicketID, Plate, SpotID string
+	Minutes                 int64
+	Fee                     int64
+}
+
+type Event struct {
+	Kind     string
+	TicketID string
+	SpotID   string
+	Size     SpotSize
+}
+
+type PricingStrategy interface {
+	Fee(t VehicleType, d time.Duration) int64
+}
+
+type SpotSelector interface {
+	Select(candidates []*Spot, v Vehicle) *Spot
+}
+
+type ParkingListener interface {
+	OnEvent(e Event)
+}
+
+type ListenerFunc func(Event)
+
+func (f ListenerFunc) OnEvent(e Event) { f(e) }
+
+type SelectorFunc func([]*Spot, Vehicle) *Spot
+
+func (f SelectorFunc) Select(c []*Spot, v Vehicle) *Spot { return f(c, v) }
+
+var (
+	ErrSpotUnavailable = errors.New("spot unavailable")
+	ErrDuplicateFloor  = errors.New("duplicate floor")
+	ErrLotFull         = errors.New("parking lot full")
+	ErrAlreadyParked   = errors.New("vehicle already parked")
+	ErrUnknownTicket   = errors.New("unknown or used ticket")
+)
+
+// ============================ Step 1 ============================
+
+type Spot struct {
+	id      string
+	floor   int
+	size    SpotSize
+	vehicle *Vehicle
+}
+
+func NewSpot(id string, floor int, size SpotSize) *Spot {
+	return &Spot{id: id, floor: floor, size: size}
+}
+
+func (s *Spot) ID() string            { return s.id }
+func (s *Spot) Floor() int            { return s.floor }
+func (s *Spot) Size() SpotSize        { return s.size }
+func (s *Spot) CanFit(v Vehicle) bool { return s.size >= v.Type.MinSize() }
+func (s *Spot) IsFree() bool          { return s.vehicle == nil }
+
+func (s *Spot) Occupy(v Vehicle) error {
+	if !s.IsFree() || !s.CanFit(v) {
+		return fmt.Errorf("%w: %s", ErrSpotUnavailable, s.id)
+	}
+	s.vehicle = &v
+	return nil
+}
+
+func (s *Spot) Vacate() (Vehicle, bool) {
+	if s.vehicle == nil {
+		return Vehicle{}, false
+	}
+	v := *s.vehicle
+	s.vehicle = nil
+	return v, true
+}
+
+// ============================ Step 3 ============================
+
+type NearestSelector struct{}
+
+func (NearestSelector) Select(candidates []*Spot, _ Vehicle) *Spot {
+	if len(candidates) == 0 {
+		return nil
+	}
+	return candidates[0] // candidates arrive in lot order
+}
+
+// ============================ Step 4 ============================
+
+type hourlyPricing struct{ rate map[VehicleType]int64 }
+
+func NewHourlyPricing(ratePerHour map[VehicleType]int64) PricingStrategy {
+	r := make(map[VehicleType]int64, len(ratePerHour))
+	for k, v := range ratePerHour {
+		r[k] = v
+	}
+	return hourlyPricing{r}
+}
+
+func (p hourlyPricing) Fee(t VehicleType, d time.Duration) int64 {
+	hours := int64((d + time.Hour - 1) / time.Hour)
+	if hours < 1 {
+		hours = 1
+	}
+	return hours * p.rate[t]
+}
+
+// ======================= Steps 2, 3, 4, 5, 6 =======================
+
+type ParkingLot struct {
+	mu        sync.Mutex
+	pricing   PricingStrategy
+	selector  SpotSelector
+	clock     func() time.Time
+	spots     []*Spot // lot order
+	byID      map[string]*Spot
+	floors    map[int]bool
+	tickets   map[string]*Ticket
+	plates    map[string]bool
+	listeners []ParkingListener
+	next      int
+}
+
+func NewParkingLot(pricing PricingStrategy, selector SpotSelector, clock func() time.Time) *ParkingLot {
+	return &ParkingLot{pricing: pricing, selector: selector, clock: clock,
+		byID: map[string]*Spot{}, floors: map[int]bool{}, tickets: map[string]*Ticket{}, plates: map[string]bool{}}
+}
+
+func (l *ParkingLot) AddFloor(floor, small, medium, large int) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.floors[floor] {
+		return fmt.Errorf("%w: %d", ErrDuplicateFloor, floor)
+	}
+	l.floors[floor] = true
+	for _, g := range []struct {
+		size  SpotSize
+		code  string
+		count int
+	}{{Small, "S", small}, {Medium, "M", medium}, {Large, "L", large}} {
+		for i := 1; i <= g.count; i++ {
+			s := NewSpot(fmt.Sprintf("F%d-%s%d", floor, g.code, i), floor, g.size)
+			l.spots = append(l.spots, s)
+			l.byID[s.id] = s
+		}
+	}
+	return nil
+}
+
+func (l *ParkingLot) Available(size SpotSize) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, s := range l.spots {
+		if s.size == size && s.IsFree() {
+			n++
+		}
+	}
+	return n
+}
+
+func (l *ParkingLot) Park(v Vehicle) (*Ticket, error) {
+	l.mu.Lock()
+	if l.plates[v.Plate] {
+		l.mu.Unlock()
+		return nil, fmt.Errorf("%w: %s", ErrAlreadyParked, v.Plate)
+	}
+	var cands []*Spot
+	for _, s := range l.spots {
+		if s.IsFree() && s.CanFit(v) {
+			cands = append(cands, s)
+		}
+	}
+	spot := l.selector.Select(cands, v)
+	if spot == nil || spot.Occupy(v) != nil {
+		l.mu.Unlock()
+		return nil, ErrLotFull
+	}
+	l.next++
+	t := &Ticket{ID: fmt.Sprintf("T%d", l.next), Plate: v.Plate, SpotID: spot.id, Entry: l.clock()}
+	l.tickets[t.ID] = t
+	l.plates[v.Plate] = true
+	ls := append([]ParkingListener(nil), l.listeners...)
+	l.mu.Unlock()
+
+	emit(ls, Event{"PARKED", t.ID, spot.id, spot.size}) // outside the lock
+	return t, nil
+}
+
+func (l *ParkingLot) Unpark(ticketID string) (*Receipt, error) {
+	l.mu.Lock()
+	t, ok := l.tickets[ticketID]
+	if !ok {
+		l.mu.Unlock()
+		return nil, fmt.Errorf("%w: %s", ErrUnknownTicket, ticketID)
+	}
+	delete(l.tickets, ticketID)
+	spot := l.byID[t.SpotID]
+	v, _ := spot.Vacate()
+	delete(l.plates, v.Plate)
+	d := l.clock().Sub(t.Entry)
+	r := &Receipt{TicketID: t.ID, Plate: t.Plate, SpotID: spot.id, Minutes: int64(d / time.Minute), Fee: l.pricing.Fee(v.Type, d)}
+	ls := append([]ParkingListener(nil), l.listeners...)
+	l.mu.Unlock()
+
+	emit(ls, Event{"LEFT", ticketID, spot.id, spot.size})
+	return r, nil
+}
+
+func (l *ParkingLot) AddListener(pl ParkingListener) {
+	l.mu.Lock()
+	l.listeners = append(l.listeners, pl)
+	l.mu.Unlock()
+}
+
+func emit(ls []ParkingListener, e Event) {
+	for _, pl := range ls {
+		pl.OnEvent(e)
+	}
+}
+
+// ============================ Step 5 ============================
+
+type DisplayBoard struct {
+	mu   sync.Mutex
+	free map[SpotSize]int
+}
+
+func NewDisplayBoard(lot *ParkingLot) *DisplayBoard {
+	b := &DisplayBoard{free: map[SpotSize]int{}}
+	for _, s := range []SpotSize{Small, Medium, Large} {
+		b.free[s] = lot.Available(s)
+	}
+	lot.AddListener(b)
+	return b
+}
+
+func (b *DisplayBoard) OnEvent(e Event) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if e.Kind == "PARKED" {
+		b.free[e.Size]--
+	} else {
+		b.free[e.Size]++
+	}
+}
+
+func (b *DisplayBoard) Free(size SpotSize) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.free[size]
+}

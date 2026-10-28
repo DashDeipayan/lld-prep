@@ -1,0 +1,217 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+)
+
+type Status int
+
+const (
+	Todo Status = iota
+	InProgress
+	InReview
+	Done
+)
+
+func (s Status) String() string {
+	return [...]string{"TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"}[s]
+}
+
+var (
+	ErrInvalid           = errors.New("invalid request")
+	ErrNotFound          = errors.New("not found")
+	ErrIllegalTransition = errors.New("illegal transition")
+	ErrUnauthorized      = errors.New("unauthorized")
+	ErrBlocked           = errors.New("blocked by dependencies")
+	ErrCycle             = errors.New("dependency cycle")
+)
+
+type who int
+
+const (
+	assignee who = iota
+	notAssignee
+)
+
+var rules = map[[2]Status]who{
+	{Todo, InProgress}:     assignee,
+	{InProgress, InReview}: assignee,
+	{InReview, Done}:       notAssignee,
+	{InReview, InProgress}: notAssignee,
+}
+
+type task struct {
+	id, title string
+	priority  int
+	seq       int
+	assignee  string
+	status    Status
+	deps      []string
+	history   []string
+}
+
+type TaskBoard struct {
+	mu    sync.Mutex
+	tasks map[string]*task
+	order []string
+}
+
+func NewTaskBoard() *TaskBoard { return &TaskBoard{tasks: map[string]*task{}} }
+
+func (b *TaskBoard) get(id string) (*task, error) {
+	t, ok := b.tasks[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: task %s", ErrNotFound, id)
+	}
+	return t, nil
+}
+
+func (b *TaskBoard) Create(title, reporter string, priority int) (string, error) {
+	if priority < 1 || priority > 5 {
+		return "", fmt.Errorf("%w: priority", ErrInvalid)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	seq := len(b.order) + 1
+	t := &task{id: fmt.Sprintf("T-%d", seq), title: title, priority: priority, seq: seq, status: Todo,
+		history: []string{"created by " + reporter}}
+	b.tasks[t.id] = t
+	b.order = append(b.order, t.id)
+	return t.id, nil
+}
+
+func (b *TaskBoard) Assign(id, user string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t, err := b.get(id)
+	if err != nil {
+		return err
+	}
+	if t.status == Done {
+		return fmt.Errorf("%w: task is done", ErrIllegalTransition)
+	}
+	t.assignee = user
+	t.history = append(t.history, "assigned to "+user)
+	return nil
+}
+
+// reachable reports whether target can be reached from 'from' via depends-on edges.
+func (b *TaskBoard) reachable(from, target string) bool {
+	stack, seen := []string{from}, map[string]bool{}
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if cur == target {
+			return true
+		}
+		if !seen[cur] {
+			seen[cur] = true
+			stack = append(stack, b.tasks[cur].deps...)
+		}
+	}
+	return false
+}
+
+func (b *TaskBoard) AddDependency(id, dependsOn string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t, err := b.get(id)
+	if err != nil {
+		return err
+	}
+	if _, err := b.get(dependsOn); err != nil {
+		return err
+	}
+	if id == dependsOn || b.reachable(dependsOn, id) {
+		return ErrCycle
+	}
+	t.deps = append(t.deps, dependsOn)
+	return nil
+}
+
+func (b *TaskBoard) blocked(t *task) bool {
+	for _, d := range t.deps {
+		if b.tasks[d].status != Done {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *TaskBoard) Move(id string, to Status, actor string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t, err := b.get(id)
+	if err != nil {
+		return err
+	}
+	rule, ok := rules[[2]Status{t.status, to}]
+	if !ok {
+		return fmt.Errorf("%w: %v -> %v", ErrIllegalTransition, t.status, to)
+	}
+	if t.assignee == "" {
+		return fmt.Errorf("%w: unassigned", ErrIllegalTransition)
+	}
+	isAssignee := t.assignee == actor
+	if (rule == assignee && !isAssignee) || (rule == notAssignee && isAssignee) {
+		return ErrUnauthorized
+	}
+	if t.status == Todo && to == InProgress && b.blocked(t) {
+		return ErrBlocked
+	}
+	t.history = append(t.history, fmt.Sprintf("%v->%v by %s", t.status, to, actor))
+	t.status = to
+	return nil
+}
+
+func (b *TaskBoard) Status(id string) (Status, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t, err := b.get(id)
+	if err != nil {
+		return 0, err
+	}
+	return t.status, nil
+}
+
+func (b *TaskBoard) TasksFor(user string) []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	var mine []*task
+	for _, id := range b.order {
+		if t := b.tasks[id]; t.assignee == user && t.status != Done {
+			mine = append(mine, t)
+		}
+	}
+	sort.SliceStable(mine, func(i, j int) bool { return mine[i].priority > mine[j].priority })
+	out := []string{}
+	for _, t := range mine {
+		out = append(out, t.id)
+	}
+	return out
+}
+
+func (b *TaskBoard) BlockedTasks() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := []string{}
+	for _, id := range b.order {
+		if t := b.tasks[id]; t.status != Done && b.blocked(t) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func (b *TaskBoard) History(id string) ([]string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t, err := b.get(id)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string{}, t.history...), nil
+}

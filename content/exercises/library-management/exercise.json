@@ -1,0 +1,13 @@
+{
+  "title": "Library Management System",
+  "difficulty": "medium",
+  "summary": "Book vs copy modelling, borrowing limits, a fine policy strategy, reservations with a held-copy window and notifications, and search.",
+  "minutes": 60,
+  "tags": ["library", "classic-problem", "strategy", "observer", "modelling"],
+  "hints": [
+    "There are two classes for one noun: `Book` (ISBN, title, author) is the catalogue entry, and `Copy` (barcode, status) is what's lent out.",
+    "A copy is AVAILABLE, ON_LOAN, or HELD for a member until a given day. A HELD copy whose hold has expired counts as AVAILABLE (lazy expiry again).",
+    "Keep a FIFO queue of reservations per ISBN. On return: if the queue is non-empty, hold the copy for the head member and notify them. Otherwise it's available.",
+    "`borrow` prefers a copy held for **this** member, then the first available copy by barcode."
+  ]
+}

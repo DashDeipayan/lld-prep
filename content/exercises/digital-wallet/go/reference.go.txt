@@ -1,0 +1,156 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
+)
+
+var (
+	ErrUnknownAccount    = errors.New("unknown account")
+	ErrDuplicateAccount  = errors.New("duplicate account")
+	ErrInvalidAmount     = errors.New("invalid amount")
+	ErrSameAccount       = errors.New("cannot transfer to the same account")
+	ErrInsufficientFunds = errors.New("insufficient funds")
+)
+
+type Txn struct {
+	ID, From, To string
+	Amount       int64
+}
+
+type account struct {
+	mu      sync.Mutex
+	id      string
+	balance int64
+	history []Txn
+}
+
+// outcome of an idempotent call; done is closed once it's computed.
+type outcome struct {
+	done chan struct{}
+	id   string
+	err  error
+}
+
+type Wallet struct {
+	mu       sync.RWMutex
+	accounts map[string]*account
+	idemMu   sync.Mutex
+	idem     map[string]*outcome
+	next     atomic.Int64
+}
+
+func NewWallet() *Wallet {
+	return &Wallet{accounts: map[string]*account{}, idem: map[string]*outcome{}}
+}
+
+func (w *Wallet) OpenAccount(id string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok := w.accounts[id]; ok {
+		return fmt.Errorf("%w: %s", ErrDuplicateAccount, id)
+	}
+	w.accounts[id] = &account{id: id}
+	return nil
+}
+
+func (w *Wallet) acct(id string) (*account, error) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	a, ok := w.accounts[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrUnknownAccount, id)
+	}
+	return a, nil
+}
+
+func (w *Wallet) txnID() string { return fmt.Sprintf("T%d", w.next.Add(1)) }
+
+func (w *Wallet) Deposit(id string, amount int64) (string, error) {
+	if amount <= 0 {
+		return "", ErrInvalidAmount
+	}
+	a, err := w.acct(id)
+	if err != nil {
+		return "", err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.balance += amount
+	t := Txn{w.txnID(), "EXTERNAL", id, amount}
+	a.history = append(a.history, t)
+	return t.ID, nil
+}
+
+func (w *Wallet) Transfer(key, from, to string, amount int64) (string, error) {
+	w.idemMu.Lock()
+	o, seen := w.idem[key]
+	if !seen {
+		o = &outcome{done: make(chan struct{})}
+		w.idem[key] = o
+	}
+	w.idemMu.Unlock()
+	if seen {
+		<-o.done // a concurrent retry waits for the first attempt's result
+		return o.id, o.err
+	}
+	o.id, o.err = w.transfer(from, to, amount)
+	close(o.done)
+	return o.id, o.err
+}
+
+func (w *Wallet) transfer(from, to string, amount int64) (string, error) {
+	if amount <= 0 {
+		return "", ErrInvalidAmount
+	}
+	if from == to {
+		return "", ErrSameAccount
+	}
+	a, err := w.acct(from)
+	if err != nil {
+		return "", err
+	}
+	b, err := w.acct(to)
+	if err != nil {
+		return "", err
+	}
+	first, second := a, b
+	if b.id < a.id { // global lock order => no deadlock
+		first, second = b, a
+	}
+	first.mu.Lock()
+	defer first.mu.Unlock()
+	second.mu.Lock()
+	defer second.mu.Unlock()
+	if a.balance < amount {
+		return "", fmt.Errorf("%w: %s has %d", ErrInsufficientFunds, from, a.balance)
+	}
+	a.balance -= amount
+	b.balance += amount
+	t := Txn{w.txnID(), from, to, amount}
+	a.history = append(a.history, t)
+	b.history = append(b.history, t)
+	return t.ID, nil
+}
+
+func (w *Wallet) Balance(id string) (int64, error) {
+	a, err := w.acct(id)
+	if err != nil {
+		return 0, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.balance, nil
+}
+
+func (w *Wallet) History(id string) ([]Txn, error) {
+	a, err := w.acct(id)
+	if err != nil {
+		return nil, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]Txn(nil), a.history...), nil
+}

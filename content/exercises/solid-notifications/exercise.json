@@ -1,0 +1,13 @@
+{
+  "title": "Untangle the Notification God-Class (SOLID)",
+  "difficulty": "easy",
+  "summary": "Refactor an if/else notification service into small notifiers behind one interface, with injected dependencies and failure isolation.",
+  "minutes": 45,
+  "tags": ["solid", "dependency-inversion", "open-closed", "refactoring"],
+  "hints": [
+    "One interface, three implementations. Each notifier knows its channel name, whether it can reach the user, and how to send.",
+    "`NotificationService` should only loop over the notifiers it was given. It must not mention email, SMS or push anywhere.",
+    "Skip a notifier if the user muted its channel **or** the notifier can't reach the user (missing email, phone or device token).",
+    "Wrap each send in try/catch (Java) or check the returned error (Go). One broken channel must not stop the others."
+  ]
+}

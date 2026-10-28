@@ -1,0 +1,13 @@
+{
+  "title": "Pluggable Discounts (Strategy)",
+  "difficulty": "easy",
+  "summary": "Replace an if/else pricing ladder with interchangeable discount strategies and pick the best one at checkout.",
+  "minutes": 30,
+  "tags": ["strategy", "open-closed", "patterns"],
+  "hints": [
+    "Each discount type is one class/struct behind a single interface with one method: given the cart, how much money comes off?",
+    "Checkout should not know which concrete strategies exist. It receives a list and asks each one.",
+    "Buy-N-get-one-free: for every (n+1) units of the SKU, one unit is free. Integer division is your friend.",
+    "Clamp: a discount can never make the total negative."
+  ]
+}

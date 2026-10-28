@@ -1,0 +1,178 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+)
+
+var (
+	ErrInvalidCoin       = errors.New("invalid coin")
+	ErrInvalidQuantity   = errors.New("quantity must be positive")
+	ErrBusy              = errors.New("busy: transaction in progress")
+	ErrSoldOut           = errors.New("sold out")
+	ErrInsertMoneyFirst  = errors.New("insert money first")
+	ErrUnknownProduct    = errors.New("unknown product")
+	ErrOutOfStock        = errors.New("out of stock")
+	ErrInsufficientFunds = errors.New("insufficient funds")
+)
+
+var Coins = map[int]bool{5: true, 10: true, 25: true, 100: true}
+
+type Product struct {
+	Code  string
+	Name  string
+	Price int
+}
+
+type Dispense struct {
+	Product Product
+	Change  int
+}
+
+// state is the State pattern: one value per state, each deciding what operations mean.
+type state interface {
+	name() string
+	stock(m *VendingMachine, p Product, qty int) error
+	insertCoin(m *VendingMachine, coin int) error
+	selectProduct(m *VendingMachine, code string) (Dispense, error)
+	cancel(m *VendingMachine) int
+}
+
+type soldOut struct{}
+type idle struct{}
+type hasMoney struct{}
+
+func (soldOut) name() string { return "SOLD_OUT" }
+func (soldOut) stock(m *VendingMachine, p Product, q int) error {
+	m.addStock(p, q)
+	m.st = idle{}
+	return nil
+}
+func (soldOut) insertCoin(*VendingMachine, int) error { return ErrSoldOut }
+func (soldOut) selectProduct(*VendingMachine, string) (Dispense, error) {
+	return Dispense{}, ErrSoldOut
+}
+func (soldOut) cancel(*VendingMachine) int { return 0 }
+
+func (idle) name() string { return "IDLE" }
+func (idle) stock(m *VendingMachine, p Product, q int) error {
+	m.addStock(p, q)
+	return nil
+}
+func (idle) insertCoin(m *VendingMachine, coin int) error {
+	m.balance += coin
+	m.st = hasMoney{}
+	return nil
+}
+func (idle) selectProduct(*VendingMachine, string) (Dispense, error) {
+	return Dispense{}, ErrInsertMoneyFirst
+}
+func (idle) cancel(*VendingMachine) int { return 0 }
+
+func (hasMoney) name() string                              { return "HAS_MONEY" }
+func (hasMoney) stock(*VendingMachine, Product, int) error { return ErrBusy }
+func (hasMoney) insertCoin(m *VendingMachine, coin int) error {
+	m.balance += coin
+	return nil
+}
+func (hasMoney) selectProduct(m *VendingMachine, code string) (Dispense, error) {
+	p, ok := m.products[code]
+	if !ok {
+		return Dispense{}, fmt.Errorf("%w: %s", ErrUnknownProduct, code)
+	}
+	if m.inventory[code] == 0 {
+		return Dispense{}, fmt.Errorf("%w: %s", ErrOutOfStock, code)
+	}
+	if m.balance < p.Price {
+		return Dispense{}, ErrInsufficientFunds
+	}
+	m.inventory[code]--
+	change := m.balance - p.Price
+	m.balance = 0
+	if m.totalStock() == 0 {
+		m.st = soldOut{}
+	} else {
+		m.st = idle{}
+	}
+	return Dispense{Product: p, Change: change}, nil
+}
+func (hasMoney) cancel(m *VendingMachine) int {
+	refund := m.balance
+	m.balance = 0
+	m.st = idle{}
+	return refund
+}
+
+type VendingMachine struct {
+	mu        sync.Mutex
+	st        state
+	balance   int
+	products  map[string]Product
+	inventory map[string]int
+}
+
+func NewVendingMachine() *VendingMachine {
+	return &VendingMachine{st: soldOut{}, products: map[string]Product{}, inventory: map[string]int{}}
+}
+
+func (m *VendingMachine) Stock(p Product, qty int) error {
+	if qty <= 0 {
+		return ErrInvalidQuantity
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st.stock(m, p, qty)
+}
+
+func (m *VendingMachine) InsertCoin(coin int) error {
+	if !Coins[coin] {
+		return fmt.Errorf("%w: %d", ErrInvalidCoin, coin)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st.insertCoin(m, coin)
+}
+
+func (m *VendingMachine) Select(code string) (Dispense, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st.selectProduct(m, code)
+}
+
+func (m *VendingMachine) Cancel() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st.cancel(m)
+}
+
+func (m *VendingMachine) Balance() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.balance
+}
+
+func (m *VendingMachine) State() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.st.name()
+}
+
+func (m *VendingMachine) Quantity(code string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.inventory[code]
+}
+
+func (m *VendingMachine) addStock(p Product, qty int) {
+	m.products[p.Code] = p
+	m.inventory[p.Code] += qty
+}
+
+func (m *VendingMachine) totalStock() int {
+	n := 0
+	for _, q := range m.inventory {
+		n += q
+	}
+	return n
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Chess: Polymorphic Move Generation",
+  "difficulty": "hard",
+  "summary": "Implement pseudo-legal moves for every piece (blocking, captures, pawn rules) plus turn-checked move execution.",
+  "minutes": 75,
+  "tags": ["chess", "polymorphism", "game", "classic-problem"],
+  "hints": [
+    "Parse `\"e4\"` into `(file = 'e' - 'a', rank = '4' - '1')` in one place, a `Square` value type. Every method takes and returns squares through it.",
+    "Rook, bishop and queen share one `slide(directions)` helper. King and knight are 'step' pieces with fixed offsets and range 1.",
+    "Pawns: `dir = +1` for white, `-1` for black. Forward one if empty. Forward two from the start rank (1 or 6) if **both** squares are empty. Diagonal only to capture an enemy.",
+    "`move()` validates in this order: a piece exists, it's that colour's turn, then the target is in `movesFrom(from)`. Then it applies the move (overwriting a capture) and flips the turn."
+  ]
+}

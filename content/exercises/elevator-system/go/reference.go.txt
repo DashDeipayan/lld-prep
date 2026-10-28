@@ -1,0 +1,221 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sync"
+)
+
+type Direction int
+
+const (
+	Idle Direction = iota
+	Up
+	Down
+)
+
+var (
+	ErrInvalidFloor     = errors.New("invalid floor")
+	ErrInvalidElevator  = errors.New("invalid elevator")
+	ErrInvalidDirection = errors.New("invalid direction")
+)
+
+type DispatchStrategy interface {
+	Choose(cars []*Elevator, floor int, dir Direction) *Elevator
+}
+
+type StrategyFunc func([]*Elevator, int, Direction) *Elevator
+
+func (f StrategyFunc) Choose(c []*Elevator, fl int, d Direction) *Elevator { return f(c, fl, d) }
+
+type Elevator struct {
+	id    int
+	floor int
+	dir   Direction
+	stops map[int]bool
+}
+
+func NewElevator(id int) *Elevator { return &Elevator{id: id, stops: map[int]bool{}} }
+
+func (e *Elevator) ID() int        { return e.id }
+func (e *Elevator) Floor() int     { return e.floor }
+func (e *Elevator) Dir() Direction { return e.dir }
+
+func (e *Elevator) Stops() []int {
+	out := make([]int, 0, len(e.stops))
+	for f := range e.stops {
+		out = append(out, f)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func (e *Elevator) AddStop(floor int) { e.stops[floor] = true }
+
+// nearest stop strictly above / below the current floor
+func (e *Elevator) above() (int, bool) {
+	best, ok := 0, false
+	for f := range e.stops {
+		if f > e.floor && (!ok || f < best) {
+			best, ok = f, true
+		}
+	}
+	return best, ok
+}
+
+func (e *Elevator) below() (int, bool) {
+	best, ok := 0, false
+	for f := range e.stops {
+		if f < e.floor && (!ok || f > best) {
+			best, ok = f, true
+		}
+	}
+	return best, ok
+}
+
+func (e *Elevator) arrive() int {
+	delete(e.stops, e.floor)
+	if len(e.stops) == 0 {
+		e.dir = Idle
+	}
+	return e.floor
+}
+
+func (e *Elevator) Step() (int, bool) {
+	if len(e.stops) == 0 { // 1
+		e.dir = Idle
+		return 0, false
+	}
+	if e.stops[e.floor] { // 2
+		return e.arrive(), true
+	}
+	up, hasUp := e.above()
+	down, hasDown := e.below()
+	if e.dir == Idle { // 3
+		if !hasDown || (hasUp && up-e.floor <= e.floor-down) {
+			e.dir = Up
+		} else {
+			e.dir = Down
+		}
+	}
+	if e.dir == Up && !hasUp { // 4
+		e.dir = Down
+	} else if e.dir == Down && !hasDown {
+		e.dir = Up
+	}
+	if e.dir == Up { // 5
+		e.floor++
+	} else {
+		e.floor--
+	}
+	if e.stops[e.floor] {
+		return e.arrive(), true
+	}
+	return 0, false
+}
+
+type NearestCar struct{}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func cost(c *Elevator, floor int, dir Direction) int {
+	cur := c.floor
+	switch {
+	case c.dir == Idle:
+		return abs(cur - floor)
+	case c.dir == Up && dir == Up && floor >= cur:
+		return floor - cur
+	case c.dir == Down && dir == Down && floor <= cur:
+		return cur - floor
+	}
+	s := c.Stops()
+	turn := cur
+	if len(s) > 0 {
+		if c.dir == Up {
+			turn = s[len(s)-1]
+		} else {
+			turn = s[0]
+		}
+	}
+	return abs(cur-turn) + abs(turn-floor)
+}
+
+func (NearestCar) Choose(cars []*Elevator, floor int, dir Direction) *Elevator {
+	var best *Elevator
+	bestCost := 0
+	for _, c := range cars {
+		if k := cost(c, floor, dir); best == nil || k < bestCost {
+			best, bestCost = c, k
+		}
+	}
+	return best
+}
+
+type ElevatorSystem struct {
+	mu       sync.Mutex
+	floors   int
+	cars     []*Elevator
+	strategy DispatchStrategy
+}
+
+func NewElevatorSystem(floors, cars int, s DispatchStrategy) *ElevatorSystem {
+	sys := &ElevatorSystem{floors: floors, strategy: s}
+	for i := 0; i < cars; i++ {
+		sys.cars = append(sys.cars, NewElevator(i))
+	}
+	return sys
+}
+
+func (s *ElevatorSystem) validFloor(f int) error {
+	if f < 0 || f >= s.floors {
+		return fmt.Errorf("%w: %d", ErrInvalidFloor, f)
+	}
+	return nil
+}
+
+func (s *ElevatorSystem) RequestPickup(floor int, dir Direction) (int, error) {
+	if err := s.validFloor(floor); err != nil {
+		return -1, err
+	}
+	if dir != Up && dir != Down {
+		return -1, ErrInvalidDirection
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.strategy.Choose(s.cars, floor, dir)
+	e.AddStop(floor)
+	return e.id, nil
+}
+
+func (s *ElevatorSystem) RequestDestination(id, floor int) error {
+	if err := s.validFloor(floor); err != nil {
+		return err
+	}
+	if id < 0 || id >= len(s.cars) {
+		return fmt.Errorf("%w: %d", ErrInvalidElevator, id)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cars[id].AddStop(floor)
+	return nil
+}
+
+func (s *ElevatorSystem) Step() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	events := []string{}
+	for _, e := range s.cars {
+		if f, ok := e.Step(); ok {
+			events = append(events, fmt.Sprintf("E%d@%d", e.id, f))
+		}
+	}
+	return events
+}
+
+func (s *ElevatorSystem) Car(id int) *Elevator { return s.cars[id] }

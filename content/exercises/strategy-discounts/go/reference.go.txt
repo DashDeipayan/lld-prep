@@ -1,0 +1,109 @@
+package main
+
+// ---- Provided: do not change Cart's API ----
+
+type Line struct {
+	SKU       string
+	UnitPrice int64
+	Qty       int
+}
+
+type Cart struct {
+	lines map[string]*Line
+	order []string
+}
+
+func NewCart() *Cart { return &Cart{lines: map[string]*Line{}} }
+
+func (c *Cart) Add(sku string, unitPrice int64, qty int) {
+	if l, ok := c.lines[sku]; ok {
+		l.Qty += qty
+		return
+	}
+	c.lines[sku] = &Line{SKU: sku, UnitPrice: unitPrice, Qty: qty}
+	c.order = append(c.order, sku)
+}
+
+func (c *Cart) Line(sku string) (Line, bool) {
+	l, ok := c.lines[sku]
+	if !ok {
+		return Line{}, false
+	}
+	return *l, true
+}
+
+func (c *Cart) Subtotal() int64 {
+	var s int64
+	for _, l := range c.lines {
+		s += l.UnitPrice * int64(l.Qty)
+	}
+	return s
+}
+
+// DiscountStrategy returns the amount (cents) a promotion takes off the cart.
+type DiscountStrategy interface {
+	Discount(c *Cart) int64
+}
+
+// DiscountFunc lets a plain function act as a strategy (like http.HandlerFunc).
+type DiscountFunc func(c *Cart) int64
+
+func (f DiscountFunc) Discount(c *Cart) int64 { return f(c) }
+
+type percentageOff struct{ percent int64 }
+
+func NewPercentageOff(percent int) DiscountStrategy {
+	if percent < 0 || percent > 100 {
+		panic("percent must be 0..100")
+	}
+	return percentageOff{int64(percent)}
+}
+
+func (p percentageOff) Discount(c *Cart) int64 { return c.Subtotal() * p.percent / 100 }
+
+type flatOff struct{ amount, minSubtotal int64 }
+
+func NewFlatOff(amount, minSubtotal int64) DiscountStrategy { return flatOff{amount, minSubtotal} }
+
+func (f flatOff) Discount(c *Cart) int64 {
+	if c.Subtotal() >= f.minSubtotal {
+		return f.amount
+	}
+	return 0
+}
+
+type buyNGetOneFree struct {
+	sku string
+	n   int
+}
+
+func NewBuyNGetOneFree(sku string, n int) DiscountStrategy {
+	if n < 1 {
+		panic("n must be >= 1")
+	}
+	return buyNGetOneFree{sku, n}
+}
+
+func (b buyNGetOneFree) Discount(c *Cart) int64 {
+	l, ok := c.Line(b.sku)
+	if !ok {
+		return 0
+	}
+	return int64(l.Qty/(b.n+1)) * l.UnitPrice
+}
+
+type Checkout struct {
+	strategies []DiscountStrategy
+}
+
+func NewCheckout(strategies ...DiscountStrategy) *Checkout {
+	return &Checkout{strategies: append([]DiscountStrategy(nil), strategies...)}
+}
+
+func (co *Checkout) Total(c *Cart) int64 {
+	var best int64
+	for _, s := range co.strategies {
+		best = max(best, s.Discount(c))
+	}
+	return max(0, c.Subtotal()-best)
+}

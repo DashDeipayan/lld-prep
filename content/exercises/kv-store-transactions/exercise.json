@@ -1,0 +1,13 @@
+{
+  "title": "In-Memory KV Store with Nested Transactions",
+  "difficulty": "hard",
+  "summary": "SET/GET/DELETE/COUNT with BEGIN/ROLLBACK/COMMIT that nest. A machine-coding classic that tests data-structure design and undo logs.",
+  "minutes": 60,
+  "tags": ["kv-store", "transactions", "command", "machine-coding", "data-structures"],
+  "hints": [
+    "Keep a `Map<String,String> data` and a `Map<String,Integer> valueCounts`, so `count(value)` is O(1).",
+    "Each BEGIN pushes an **undo log**: before the first change to a key in that transaction, record the key's previous value (or 'absent').",
+    "ROLLBACK replays the top log's previous values and pops it. COMMIT throws away **all** logs, because the changes already live in `data`.",
+    "Every mutation goes through one private `put(key, valueOrNull)` that updates `data` and `valueCounts` together. Undo reuses it."
+  ]
+}

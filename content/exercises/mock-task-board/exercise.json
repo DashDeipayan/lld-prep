@@ -1,0 +1,13 @@
+{
+  "title": "Mock: Task Board (Jira-lite)",
+  "difficulty": "hard",
+  "summary": "Workflow state machine with actor rules, task dependencies with cycle detection, blocked tasks, per-user queues and an audit history.",
+  "minutes": 60,
+  "tags": ["mock", "state", "graph", "cycle-detection", "authorization"],
+  "hints": [
+    "Write the transition rules as data: `(from, to) → rule`, where the rule is either 'actor must be the assignee' or 'actor must NOT be the assignee'.",
+    "Adding the edge `A depends on B` creates a cycle iff A is reachable from B along existing 'depends on' edges. Run a DFS from B looking for A **before** adding the edge.",
+    "Record history inside the same methods that mutate state, so it can never drift.",
+    "`tasksFor(user)`: assigned to user, not DONE, sorted by priority (desc), then creation order."
+  ]
+}

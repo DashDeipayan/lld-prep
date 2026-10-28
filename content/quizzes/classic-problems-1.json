@@ -1,0 +1,116 @@
+{
+  "title": "Classic Problems I: Design Decisions",
+  "summary": "Parking lot, vending machine, games and caches. The decisions that separate a hire from a no-hire.",
+  "questions": [
+    {
+      "q": "In a parking lot, how should you model the rule \"bikes fit anywhere, cars need medium+, trucks need large\"?",
+      "options": [
+        "`class Car extends Vehicle` with an overridden `canPark(Spot)` in every subclass",
+        "Give each vehicle type a minimum spot size, and say a spot fits if `spot.size ≥ type.minSize`, with ordered enums",
+        "A nested `switch` inside `ParkingLot.park`",
+        "Separate `BikeParkingLot`, `CarParkingLot` and `TruckParkingLot` classes"
+      ],
+      "answer": 1,
+      "explain": "The rule is data, not behaviour. An ordered enum comparison is short and correct, and a new type is one enum constant."
+    },
+    {
+      "q": "Two entry gates call `park()` at the same instant and both pick spot F1-M1. What's the simplest correct fix for a single lot?",
+      "options": [
+        "Make `Spot.isFree()` `volatile`",
+        "Run the find-free-spot and occupy steps inside one critical section (a lock on the lot), firing events after releasing it",
+        "Retry if the spot turns out to be taken",
+        "Give each gate its own set of spots"
+      ],
+      "answer": 1,
+      "explain": "Selection plus occupation is a check-then-act. One short lock is simple and obviously correct. Mention finer granularity as an optimisation."
+    },
+    {
+      "q": "In the vending machine, a user selects a product that costs more than the inserted balance. What should happen?",
+      "options": [
+        "Refund the balance and go back to IDLE",
+        "Fail with an insufficient-funds error, keeping the HAS_MONEY state and the balance unchanged",
+        "Dispense the product and record a debt",
+        "Throw and reset the machine"
+      ],
+      "answer": 1,
+      "explain": "A failed operation shouldn't change state. The user may insert another coin."
+    },
+    {
+      "q": "Why do LRU cache solutions use sentinel head and tail nodes?",
+      "options": [
+        "To store the capacity",
+        "They remove null checks for the first and last element, so insert and unlink are always the same four pointer updates",
+        "Java requires them",
+        "They make the cache thread-safe"
+      ],
+      "answer": 1,
+      "explain": "Sentinels remove the edge cases, so you write less code with fewer bugs, which matters under time pressure."
+    },
+    {
+      "q": "How do you make the N×N tic-tac-toe win check O(1) per move?",
+      "options": [
+        "Scan the row, column and both diagonals after each move",
+        "Keep per-row, per-column and two diagonal counters (+1 for X, −1 for O). A win is when one of the touched counters reaches ±N",
+        "Precompute all winning lines and check every one",
+        "Use a hash of the board"
+      ],
+      "answer": 1,
+      "explain": "Each move touches at most 4 counters. Scanning is O(N), which is fine to mention first, but the interviewer usually wants the counters."
+    },
+    {
+      "q": "Snake & ladder tests need deterministic games. What's the cleanest design?",
+      "options": [
+        "Seed `Math.random()` globally in tests",
+        "Inject a `Dice` interface into the game. Tests pass a scripted sequence, and production uses a random implementation",
+        "Make `rollDice()` protected and override it in a test subclass",
+        "Add a `debug` flag that fixes rolls"
+      ],
+      "answer": 1,
+      "explain": "Dependency injection of randomness, just like the clock. A subclass override also works, but it couples tests to internals."
+    },
+    {
+      "q": "In chess, where should the movement rules live?",
+      "options": [
+        "In `Board.isValidMove()`, with a switch on piece type",
+        "In each piece (polymorphic `candidateMoves(board, from)`), while the board only answers occupancy questions. Legality (not leaving your king in check) is checked by the game",
+        "In the `Player` class",
+        "In a static `Rules` utility"
+      ],
+      "answer": 1,
+      "explain": "Pieces know how they move, and the board knows where things are. A two-phase check keeps the pieces simple."
+    },
+    {
+      "q": "The logging framework has a logger at INFO and a file handler at DEBUG. A `debug()` call…",
+      "options": [
+        "Is written to the file because the handler accepts DEBUG",
+        "Is dropped by the logger before it reaches any handler",
+        "Throws an exception",
+        "Is buffered until the level changes"
+      ],
+      "answer": 1,
+      "explain": "Both filters apply, and the logger's check comes first. It's also the cheap one, which matters for performance."
+    },
+    {
+      "q": "Composite file system: `size(\"/home\")` must include every nested file. What's the idiomatic implementation?",
+      "options": [
+        "Keep a running total in a global map",
+        "`Directory.size()` sums `child.size()` over its children, which recurses naturally because files and directories share the `Node` interface",
+        "Walk a flat list of all paths and filter by prefix",
+        "Cache sizes in each file"
+      ],
+      "answer": 1,
+      "explain": "That's what Composite is for. Mention caching sizes with invalidation as an optimisation for very large trees."
+    },
+    {
+      "q": "Interviewer: \"Now support electric cars that need charging spots.\" Which answer shows your parking-lot design was right?",
+      "options": [
+        "\"I'll add an `isElectric` flag and an `if` in park().\"",
+        "\"I'll add an EV spot capability and an `EvAwareSpotSelector` strategy that prefers charging spots for EVs. `ParkingLot` itself doesn't change.\"",
+        "\"I'd need to redesign the Spot hierarchy.\"",
+        "\"Create a separate EV parking lot class.\""
+      ],
+      "answer": 1,
+      "explain": "Extensions should land in the abstraction you introduced for variation. Point at the class you'd add."
+    }
+  ]
+}

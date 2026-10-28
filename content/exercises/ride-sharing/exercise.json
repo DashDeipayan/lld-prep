@@ -1,0 +1,13 @@
+{
+  "title": "Ride Sharing: Matching, Trip Lifecycle & Fares",
+  "difficulty": "hard",
+  "summary": "Uber-style core: driver availability, a nearest-driver matching strategy, a trip state machine, a pricing strategy with surge, and atomic driver assignment under contention.",
+  "minutes": 75,
+  "tags": ["ride-sharing", "state", "strategy", "concurrency", "classic-problem"],
+  "hints": [
+    "The service filters candidates (online, AVAILABLE, right class) and passes them to the strategy **sorted by id**. The strategy only decides which candidate is best.",
+    "Write a transition map `{ASSIGNED: [ARRIVED, CANCELLED], ARRIVED: [IN_PROGRESS, CANCELLED], IN_PROGRESS: [COMPLETED]}` and one `transition(trip, to)` helper.",
+    "Choosing a driver and marking them ON_TRIP must be one atomic step, or two riders get the same driver.",
+    "Fare: `minutes = ceil(durationMs / 60000)`, then `(base + perKm·distance + perMin·minutes) · surgePercent / 100`, all in integers."
+  ]
+}

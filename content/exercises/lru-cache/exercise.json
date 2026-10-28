@@ -1,0 +1,13 @@
+{
+  "title": "Thread-Safe LRU Cache",
+  "difficulty": "medium",
+  "summary": "O(1) get/put with a hash map plus a hand-written doubly linked list, eviction callbacks, and safety under concurrent access.",
+  "minutes": 50,
+  "tags": ["lru", "data-structures", "concurrency", "classic-problem"],
+  "hints": [
+    "A map from key to node, plus a doubly linked list with **sentinel** head and tail nodes. That removes every null check.",
+    "`get`: on a hit, unlink the node and insert it after head. `put`: update and move to front, or insert at the front, then evict `tail.prev` if over capacity.",
+    "Call `onEvict` with the evicted entry. Updating an existing key is **not** an eviction.",
+    "`get` mutates the order, so a read-write lock doesn't help. Use a single mutex, and keep the critical section O(1)."
+  ]
+}

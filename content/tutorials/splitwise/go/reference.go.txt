@@ -1,0 +1,296 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"sync"
+)
+
+// ======================= Provided =======================
+
+var (
+	ErrInvalidSplit  = errors.New("invalid split")
+	ErrUnknownUser   = errors.New("unknown user")
+	ErrDuplicateUser = errors.New("duplicate user")
+	ErrInvalidAmount = errors.New("invalid amount")
+	ErrOverSettle    = errors.New("settling more than owed")
+)
+
+type Transfer struct {
+	From, To string
+	Amount   int64
+}
+
+type Split interface {
+	Shares(amount int64, participants []string) (map[string]int64, error)
+}
+
+// ======================= Step 1 =======================
+
+func checkBasics(amount int64, participants []string) error {
+	if amount <= 0 {
+		return fmt.Errorf("%w: amount must be positive", ErrInvalidSplit)
+	}
+	if len(participants) == 0 {
+		return fmt.Errorf("%w: no participants", ErrInvalidSplit)
+	}
+	return nil
+}
+
+func sameKeys[V any](m map[string]V, participants []string) error {
+	if len(m) != len(participants) {
+		return fmt.Errorf("%w: keys must match participants", ErrInvalidSplit)
+	}
+	for _, p := range participants {
+		if _, ok := m[p]; !ok {
+			return fmt.Errorf("%w: missing %s", ErrInvalidSplit, p)
+		}
+	}
+	return nil
+}
+
+type EqualSplit struct{}
+
+func (EqualSplit) Shares(amount int64, participants []string) (map[string]int64, error) {
+	if err := checkBasics(amount, participants); err != nil {
+		return nil, err
+	}
+	n := int64(len(participants))
+	base, rem := amount/n, amount%n
+	out := map[string]int64{}
+	for i, p := range participants {
+		out[p] = base
+		if int64(i) < rem {
+			out[p]++
+		}
+	}
+	return out, nil
+}
+
+type exactSplit struct{ amounts map[string]int64 }
+
+func NewExactSplit(amounts map[string]int64) Split { return exactSplit{amounts} }
+
+func (e exactSplit) Shares(amount int64, participants []string) (map[string]int64, error) {
+	if err := checkBasics(amount, participants); err != nil {
+		return nil, err
+	}
+	if err := sameKeys(e.amounts, participants); err != nil {
+		return nil, err
+	}
+	var sum int64
+	out := map[string]int64{}
+	for _, p := range participants {
+		v := e.amounts[p]
+		if v < 0 {
+			return nil, fmt.Errorf("%w: negative share", ErrInvalidSplit)
+		}
+		out[p] = v
+		sum += v
+	}
+	if sum != amount {
+		return nil, fmt.Errorf("%w: shares sum to %d, expected %d", ErrInvalidSplit, sum, amount)
+	}
+	return out, nil
+}
+
+type percentSplit struct{ percents map[string]int }
+
+func NewPercentSplit(percents map[string]int) Split { return percentSplit{percents} }
+
+func (ps percentSplit) Shares(amount int64, participants []string) (map[string]int64, error) {
+	if err := checkBasics(amount, participants); err != nil {
+		return nil, err
+	}
+	if err := sameKeys(ps.percents, participants); err != nil {
+		return nil, err
+	}
+	total := 0
+	for _, v := range ps.percents {
+		if v < 0 {
+			return nil, fmt.Errorf("%w: negative percent", ErrInvalidSplit)
+		}
+		total += v
+	}
+	if total != 100 {
+		return nil, fmt.Errorf("%w: percents sum to %d", ErrInvalidSplit, total)
+	}
+	out := map[string]int64{}
+	var assigned int64
+	for _, p := range participants {
+		out[p] = amount * int64(ps.percents[p]) / 100
+		assigned += out[p]
+	}
+	for i := 0; assigned < amount; i, assigned = (i+1)%len(participants), assigned+1 {
+		out[participants[i]]++
+	}
+	return out, nil
+}
+
+// ======================= Steps 2-5 =======================
+
+type Splitwise struct {
+	mu    sync.Mutex
+	users map[string]bool
+	net   map[string]map[string]int64 // net[a][b] = a owes b (signed, antisymmetric)
+	next  int
+}
+
+func NewSplitwise() *Splitwise {
+	return &Splitwise{users: map[string]bool{}, net: map[string]map[string]int64{}}
+}
+
+func (s *Splitwise) AddUser(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.users[id] {
+		return fmt.Errorf("%w: %s", ErrDuplicateUser, id)
+	}
+	s.users[id] = true
+	return nil
+}
+
+func (s *Splitwise) requireUser(id string) error {
+	if !s.users[id] {
+		return fmt.Errorf("%w: %s", ErrUnknownUser, id)
+	}
+	return nil
+}
+
+func (s *Splitwise) row(u string) map[string]int64 {
+	r, ok := s.net[u]
+	if !ok {
+		r = map[string]int64{}
+		s.net[u] = r
+	}
+	return r
+}
+
+func (s *Splitwise) addDebt(debtor, creditor string, amount int64) {
+	s.row(debtor)[creditor] += amount
+	s.row(creditor)[debtor] -= amount
+}
+
+func (s *Splitwise) AddExpense(paidBy string, amount int64, participants []string, split Split) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.requireUser(paidBy); err != nil {
+		return "", err
+	}
+	seen := map[string]bool{}
+	for _, p := range participants {
+		if err := s.requireUser(p); err != nil {
+			return "", err
+		}
+		if seen[p] {
+			return "", fmt.Errorf("%w: duplicate participant %s", ErrInvalidSplit, p)
+		}
+		seen[p] = true
+	}
+	shares, err := split.Shares(amount, participants)
+	if err != nil {
+		return "", err
+	}
+	for p, v := range shares {
+		if p != paidBy && v > 0 {
+			s.addDebt(p, paidBy, v)
+		}
+	}
+	s.next++
+	return fmt.Sprintf("E%d", s.next), nil
+}
+
+func (s *Splitwise) owes(debtor, creditor string) int64 {
+	return max(0, s.net[debtor][creditor])
+}
+
+func (s *Splitwise) Owes(debtor, creditor string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.owes(debtor, creditor)
+}
+
+func (s *Splitwise) balance(u string) int64 {
+	var b int64
+	for _, v := range s.net[u] {
+		b -= v
+	}
+	return b
+}
+
+func (s *Splitwise) Balance(user string) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.balance(user)
+}
+
+func (s *Splitwise) Settle(from, to string, amount int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.requireUser(from); err != nil {
+		return err
+	}
+	if err := s.requireUser(to); err != nil {
+		return err
+	}
+	if amount <= 0 {
+		return ErrInvalidAmount
+	}
+	if amount > s.owes(from, to) {
+		return ErrOverSettle
+	}
+	s.addDebt(to, from, amount)
+	return nil
+}
+
+type position struct {
+	id     string
+	amount int64
+}
+
+// pick returns the index of the largest amount, ties -> smallest id.
+func pick(ps []position) int {
+	best := 0
+	for i, p := range ps {
+		if p.amount > ps[best].amount || (p.amount == ps[best].amount && p.id < ps[best].id) {
+			best = i
+		}
+	}
+	return best
+}
+
+func (s *Splitwise) Simplify() []Transfer {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0, len(s.users))
+	for u := range s.users {
+		ids = append(ids, u)
+	}
+	sort.Strings(ids)
+	var creditors, debtors []position
+	for _, u := range ids {
+		switch b := s.balance(u); {
+		case b > 0:
+			creditors = append(creditors, position{u, b})
+		case b < 0:
+			debtors = append(debtors, position{u, -b})
+		}
+	}
+	out := []Transfer{}
+	for len(creditors) > 0 && len(debtors) > 0 {
+		ci, di := pick(creditors), pick(debtors)
+		x := min(creditors[ci].amount, debtors[di].amount)
+		out = append(out, Transfer{debtors[di].id, creditors[ci].id, x})
+		creditors[ci].amount -= x
+		debtors[di].amount -= x
+		if creditors[ci].amount == 0 {
+			creditors = slices.Delete(creditors, ci, ci+1)
+		}
+		if debtors[di].amount == 0 {
+			debtors = slices.Delete(debtors, di, di+1)
+		}
+	}
+	return out
+}

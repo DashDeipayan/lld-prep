@@ -1,0 +1,111 @@
+{
+  "title": "Day 5 Check: Concurrency for LLD",
+  "summary": "Races, locks, deadlocks and double-booking. The questions that decide senior-level signals.",
+  "questions": [
+    {
+      "q": "Two requests call `if (seat.isAvailable()) seat.book(user)` at the same time on a `ConcurrentHashMap`-backed repository. What happens?",
+      "options": [
+        "Safe, because ConcurrentHashMap makes it atomic",
+        "A check-then-act race: both can see the seat as available and both book it. The check and the act must be one atomic step (a lock, `compute`, or CAS on the status)",
+        "A deadlock",
+        "The second call throws ConcurrentModificationException"
+      ],
+      "answer": 1,
+      "explain": "Thread-safe collections make single operations atomic, not your sequence of operations."
+    },
+    {
+      "q": "A user books seats A1, A2 and A3. A2 is taken. What should the system guarantee?",
+      "options": [
+        "Book A1 and A3 and report that A2 failed",
+        "Nothing changes. Validate all seats under one lock first, then hold them all (all-or-nothing)",
+        "Retry A2 until it frees up",
+        "Book all three anyway and resolve it later"
+      ],
+      "answer": 1,
+      "explain": "Partial bookings leave a mess to clean up. Validate everything, then mutate everything, inside the same critical section."
+    },
+    {
+      "q": "`transfer(a, b)` locks `a` then `b`. Simultaneously `transfer(b, a)` runs. What's the standard fix for the resulting deadlock?",
+      "options": [
+        "Add `Thread.sleep` between the two locks",
+        "Always acquire locks in a global order (for example by account id), which breaks circular wait",
+        "Use `volatile` balances",
+        "Catch DeadlockException and retry"
+      ],
+      "answer": 1,
+      "explain": "Of the four Coffman conditions, circular wait is the one you remove in practice. `tryLock` with a timeout is the alternative."
+    },
+    {
+      "q": "Why must a condition wait be wrapped in `while (!condition) cond.await()` rather than `if`?",
+      "options": [
+        "`if` doesn't compile with await",
+        "Spurious wakeups happen, and another thread may consume the state change before this one reacquires the lock",
+        "`while` is faster",
+        "To avoid holding the lock"
+      ],
+      "answer": 1,
+      "explain": "Always recheck the predicate after waking."
+    },
+    {
+      "q": "Seat holds expire after 10 minutes. Which implementation is simplest to make correct and testable?",
+      "options": [
+        "Start a Timer thread per hold that releases the seat",
+        "Store `expiresAt` and treat a HELD seat with `expiresAt <= now` as available, checked lazily with an injected clock",
+        "Run a cron job every minute",
+        "Use `Thread.sleep(600_000)` in the booking thread"
+      ],
+      "answer": 1,
+      "explain": "Lazy expiry needs no background threads and no cleanup races, and tests can move time with a fake clock. A background sweeper is an optimisation you can add later."
+    },
+    {
+      "q": "In Go, an elevator controller receives requests from many goroutines. Which design avoids locks completely?",
+      "options": [
+        "A global variable",
+        "A single goroutine owns the controller state and receives requests on a channel",
+        "`sync.Map` for every field",
+        "`runtime.LockOSThread`"
+      ],
+      "answer": 1,
+      "explain": "\"Share memory by communicating.\" Confinement to one goroutine serialises access without mutexes."
+    },
+    {
+      "q": "Which collection is designed for many readers and rare writers, such as a listener list that's iterated on every event?",
+      "options": ["ArrayList with synchronized", "CopyOnWriteArrayList", "LinkedList", "Vector"],
+      "answer": 1,
+      "explain": "Iteration works on a snapshot and never throws. Writes copy the array, which is fine when they're rare."
+    },
+    {
+      "q": "Your LRU cache uses a `ReadWriteLock` and takes the **read** lock in `get`. What's wrong?",
+      "options": [
+        "Nothing. Reads should share a lock",
+        "`get` reorders the recency list (a write), so concurrent gets corrupt the linked list. It needs exclusive access",
+        "ReadWriteLock is deprecated",
+        "Read locks can't be held by several threads"
+      ],
+      "answer": 1,
+      "explain": "An operation that reads from your API's point of view can still mutate internal state. Lock by what the code writes."
+    },
+    {
+      "q": "With several app servers sharing one database, how do you stop two servers from booking the same seat?",
+      "options": [
+        "A `synchronized` block in the booking service",
+        "A database guarantee: a conditional `UPDATE … WHERE status='AVAILABLE'` that checks the row count, a unique constraint, or optimistic locking with a version column",
+        "A static HashMap",
+        "Sticky sessions"
+      ],
+      "answer": 1,
+      "explain": "In-process locks only protect one process. Mention the database-level mechanism to show you can scale the design."
+    },
+    {
+      "q": "Why should an observer callback or eviction callback be invoked **after** releasing your lock?",
+      "options": [
+        "To make it faster",
+        "Foreign code might call back into your object (re-entrancy) or block. Holding your lock while it runs invites deadlocks and long stalls",
+        "Locks can't be held across method calls",
+        "Java requires it"
+      ],
+      "answer": 1,
+      "explain": "Never run code you don't control inside a critical section."
+    }
+  ]
+}

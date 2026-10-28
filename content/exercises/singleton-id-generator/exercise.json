@@ -1,0 +1,13 @@
+{
+  "title": "Fix the Racy Singleton",
+  "difficulty": "easy",
+  "summary": "A lazily initialised ID generator hands out duplicate IDs under load. Make both the initialisation and the counter thread-safe.",
+  "minutes": 30,
+  "tags": ["singleton", "concurrency", "thread-safety", "atomic"],
+  "hints": [
+    "There are **two** races: two threads can both see `instance == null`, and `counter++` is a read-modify-write.",
+    "Java: the holder idiom (`private static class Holder { static final IdGenerator I = new IdGenerator(); }`) fixes initialisation for free. `AtomicLong` fixes the counter.",
+    "Go: `sync.Once` for the instance, `atomic.Int64` (or a mutex) for the counter.",
+    "Formatting: `String.format(\"%s-%06d\", prefix, n)` / `fmt.Sprintf(\"%s-%06d\", prefix, n)`."
+  ]
+}

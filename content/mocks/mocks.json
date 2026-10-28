@@ -1,0 +1,50 @@
+[
+  {
+    "id": "car-rental",
+    "title": "Car Rental System",
+    "minutes": 60,
+    "exercise": "mock-car-rental",
+    "company": "Uber / Zoomcar",
+    "brief": "Search, reserve, cancel and return cars across branches, with no double booking and late fees."
+  },
+  {
+    "id": "hotel-booking",
+    "title": "Hotel Reservation System",
+    "minutes": 60,
+    "exercise": "mock-hotel-booking",
+    "company": "Booking.com / OYO",
+    "brief": "Room-type inventory over date ranges, room assignment, check-in/out lifecycle and billing."
+  },
+  {
+    "id": "task-board",
+    "title": "Task Board (Jira-lite)",
+    "minutes": 60,
+    "exercise": "mock-task-board",
+    "company": "Atlassian",
+    "brief": "A workflow state machine with actor rules, dependencies with cycle detection, and an audit trail."
+  },
+  {
+    "id": "online-auction",
+    "title": "Online Auction",
+    "minutes": 60,
+    "exercise": "mock-online-auction",
+    "company": "eBay / Amazon",
+    "brief": "Timed auctions with increments, anti-sniping, outbid notifications and race-free bidding."
+  },
+  {
+    "id": "elevator",
+    "title": "Elevator System (re-do under time)",
+    "minutes": 75,
+    "exercise": "elevator-system",
+    "company": "Microsoft / Google",
+    "brief": "Redo the elevator problem from scratch against the clock. The starter file is fresh for each attempt."
+  },
+  {
+    "id": "movie-booking-redo",
+    "title": "Movie Booking (re-do under time)",
+    "minutes": 75,
+    "exercise": "movie-booking",
+    "company": "Flipkart / BookMyShow",
+    "brief": "Redo BookMyShow from a blank starter in 75 minutes: catalogue, shows, holds, payment and cancellation."
+  }
+]

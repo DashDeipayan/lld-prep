@@ -1,0 +1,13 @@
+{
+  "title": "Text Editor with Undo/Redo (Command)",
+  "difficulty": "medium",
+  "summary": "Insert and delete as command objects with undo, redo, a bounded history and correct redo invalidation.",
+  "minutes": 40,
+  "tags": ["command", "undo-redo", "memento"],
+  "hints": [
+    "`InsertCommand` remembers `(pos, text)`. Its undo deletes `[pos, pos+len)`. `DeleteCommand` must **capture the removed text** in `execute()` so undo can put it back.",
+    "Use two deques. `run`: execute, push to undo, clear redo. `undo`: pop undo, call undo, push redo. `redo`: pop redo, execute, push undo.",
+    "Validate **before** creating or recording a command. Invalid operations and no-ops never enter the history.",
+    "Bounded history: when the undo stack exceeds `maxHistory`, drop the **oldest** entry (`removeLast` on an `ArrayDeque` used as a stack)."
+  ]
+}

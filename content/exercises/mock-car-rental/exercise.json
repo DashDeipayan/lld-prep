@@ -1,0 +1,13 @@
+{
+  "title": "Mock: Car Rental System",
+  "difficulty": "medium",
+  "summary": "Branches, cars, date-range search, reservations without overlap, cancellation and late-return fees.",
+  "minutes": 60,
+  "tags": ["mock", "booking", "intervals", "concurrency"],
+  "hints": [
+    "Days are integers, and a reservation covers `[startDay, endDay)`. It's the same half-open overlap test as the meeting rooms.",
+    "Per car, keep a list of active reservations. Availability means no active reservation overlaps.",
+    "Search: filter cars by city (via their branch) and type, keep the available ones, then sort by (rate, id).",
+    "Late fee: `extraDays × rate × 3 / 2`. Early return doesn't refund anything."
+  ]
+}

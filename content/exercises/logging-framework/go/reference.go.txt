@@ -1,0 +1,117 @@
+package main
+
+import (
+	"strings"
+	"sync"
+	"sync/atomic"
+)
+
+type Level int
+
+const (
+	Debug Level = iota
+	Info
+	Warn
+	Error
+)
+
+var levelNames = [...]string{"DEBUG", "INFO", "WARN", "ERROR"}
+
+func (l Level) String() string {
+	if l < Debug || l > Error {
+		return "UNKNOWN"
+	}
+	return levelNames[l]
+}
+
+type Formatter interface {
+	Format(logger string, lvl Level, msg string) string
+}
+
+type Handler interface {
+	Handle(logger string, lvl Level, msg string) error
+}
+
+type SimpleFormatter struct{}
+
+func (SimpleFormatter) Format(logger string, lvl Level, msg string) string {
+	return lvl.String() + " [" + logger + "] " + msg
+}
+
+type JSONFormatter struct{}
+
+var jsonEsc = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+
+func (JSONFormatter) Format(logger string, lvl Level, msg string) string {
+	return `{"level":"` + lvl.String() + `","logger":"` + jsonEsc.Replace(logger) + `","msg":"` + jsonEsc.Replace(msg) + `"}`
+}
+
+type memoryHandler struct {
+	mu   sync.Mutex
+	min  Level
+	sink *[]string
+	f    Formatter
+}
+
+func NewMemoryHandler(min Level, sink *[]string, f Formatter) Handler {
+	return &memoryHandler{min: min, sink: sink, f: f}
+}
+
+func (h *memoryHandler) Handle(logger string, lvl Level, msg string) error {
+	if lvl < h.min {
+		return nil
+	}
+	line := h.f.Format(logger, lvl, msg)
+	h.mu.Lock()
+	*h.sink = append(*h.sink, line)
+	h.mu.Unlock()
+	return nil
+}
+
+type Logger struct {
+	name     string
+	min      atomic.Int32
+	mu       sync.RWMutex
+	handlers []Handler
+}
+
+func NewLogger(name string, min Level) *Logger {
+	l := &Logger{name: name}
+	l.min.Store(int32(min))
+	return l
+}
+
+func (l *Logger) AddHandler(h Handler) *Logger {
+	l.mu.Lock()
+	l.handlers = append(l.handlers, h)
+	l.mu.Unlock()
+	return l
+}
+
+func (l *Logger) SetLevel(lvl Level) { l.min.Store(int32(lvl)) }
+
+func (l *Logger) Debug(msg string) { l.log(Debug, msg) }
+func (l *Logger) Info(msg string)  { l.log(Info, msg) }
+func (l *Logger) Warn(msg string)  { l.log(Warn, msg) }
+func (l *Logger) Error(msg string) { l.log(Error, msg) }
+
+func (l *Logger) log(lvl Level, msg string) {
+	if int32(lvl) < l.min.Load() {
+		return
+	}
+	l.mu.RLock()
+	hs := l.handlers
+	l.mu.RUnlock()
+	for _, h := range hs {
+		callSafely(h, l.name, lvl, msg)
+	}
+}
+
+func callSafely(h Handler, logger string, lvl Level, msg string) {
+	defer func() { _ = recover() }()
+	_ = h.Handle(logger, lvl, msg) // errors/panics are isolated per handler
+}
+
+type HandlerFunc func(logger string, lvl Level, msg string) error
+
+func (f HandlerFunc) Handle(logger string, lvl Level, msg string) error { return f(logger, lvl, msg) }

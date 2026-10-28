@@ -1,0 +1,225 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+)
+
+var (
+	ErrNotFound    = errors.New("not found")
+	ErrExists      = errors.New("already exists")
+	ErrNotDir      = errors.New("not a directory")
+	ErrInvalidPath = errors.New("invalid path")
+)
+
+type Node interface {
+	Name() string
+	Size() int64
+}
+
+type File struct {
+	name string
+	size int64
+}
+
+func (f *File) Name() string { return f.name }
+func (f *File) Size() int64  { return f.size }
+
+type Dir struct {
+	name     string
+	children map[string]Node
+}
+
+func newDir(name string) *Dir { return &Dir{name: name, children: map[string]Node{}} }
+
+func (d *Dir) Name() string { return d.name }
+
+func (d *Dir) Size() int64 {
+	var total int64
+	for _, c := range d.children {
+		total += c.Size()
+	}
+	return total
+}
+
+func (d *Dir) sortedNames() []string {
+	names := make([]string, 0, len(d.children))
+	for n := range d.children {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	return names
+}
+
+type FileSystem struct{ root *Dir }
+
+func NewFileSystem() *FileSystem { return &FileSystem{root: newDir("")} }
+
+func split(p string) ([]string, error) {
+	if !strings.HasPrefix(p, "/") {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidPath, p)
+	}
+	var parts []string
+	for _, s := range strings.Split(p, "/") {
+		if s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return parts, nil
+}
+
+func (fs *FileSystem) resolve(parts []string) (Node, error) {
+	var cur Node = fs.root
+	for _, p := range parts {
+		d, ok := cur.(*Dir)
+		if !ok {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, p)
+		}
+		if cur, ok = d.children[p]; !ok {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, p)
+		}
+	}
+	return cur, nil
+}
+
+func (fs *FileSystem) dir(parts []string) (*Dir, error) {
+	n, err := fs.resolve(parts)
+	if err != nil {
+		return nil, err
+	}
+	d, ok := n.(*Dir)
+	if !ok {
+		return nil, ErrNotDir
+	}
+	return d, nil
+}
+
+func (fs *FileSystem) Mkdir(p string) error {
+	parts, err := split(p)
+	if err != nil {
+		return err
+	}
+	cur := fs.root
+	for _, part := range parts {
+		switch next := cur.children[part].(type) {
+		case nil:
+			d := newDir(part)
+			cur.children[part] = d
+			cur = d
+		case *Dir:
+			cur = next
+		default:
+			return fmt.Errorf("%w: %s", ErrExists, part)
+		}
+	}
+	return nil
+}
+
+func (fs *FileSystem) CreateFile(p string, size int64) error {
+	parts, err := split(p)
+	if err != nil {
+		return err
+	}
+	if len(parts) == 0 {
+		return ErrInvalidPath
+	}
+	parent, err := fs.dir(parts[:len(parts)-1])
+	if err != nil {
+		return err
+	}
+	name := parts[len(parts)-1]
+	if _, exists := parent.children[name]; exists {
+		return fmt.Errorf("%w: %s", ErrExists, p)
+	}
+	parent.children[name] = &File{name: name, size: size}
+	return nil
+}
+
+func (fs *FileSystem) Size(p string) (int64, error) {
+	parts, err := split(p)
+	if err != nil {
+		return 0, err
+	}
+	n, err := fs.resolve(parts)
+	if err != nil {
+		return 0, err
+	}
+	return n.Size(), nil
+}
+
+func (fs *FileSystem) Ls(p string) ([]string, error) {
+	parts, err := split(p)
+	if err != nil {
+		return nil, err
+	}
+	n, err := fs.resolve(parts)
+	if err != nil {
+		return nil, err
+	}
+	d, ok := n.(*Dir)
+	if !ok {
+		return []string{n.Name()}, nil
+	}
+	out := []string{}
+	for _, name := range d.sortedNames() {
+		if _, isDir := d.children[name].(*Dir); isDir {
+			name += "/"
+		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
+func (fs *FileSystem) Find(p, ext string) ([]string, error) {
+	parts, err := split(p)
+	if err != nil {
+		return nil, err
+	}
+	n, err := fs.resolve(parts)
+	if err != nil {
+		return nil, err
+	}
+	prefix := ""
+	if len(parts) > 0 {
+		prefix = "/" + strings.Join(parts, "/")
+	}
+	out := []string{}
+	var walk func(n Node, full string)
+	walk = func(n Node, full string) {
+		switch x := n.(type) {
+		case *File:
+			if strings.HasSuffix(full, "."+ext) {
+				out = append(out, full)
+			}
+		case *Dir:
+			for name, c := range x.children {
+				walk(c, full+"/"+name)
+			}
+		}
+	}
+	walk(n, prefix)
+	slices.Sort(out)
+	return out, nil
+}
+
+func (fs *FileSystem) Delete(p string) error {
+	parts, err := split(p)
+	if err != nil {
+		return err
+	}
+	if len(parts) == 0 {
+		return fmt.Errorf("%w: cannot delete root", ErrInvalidPath)
+	}
+	parent, err := fs.dir(parts[:len(parts)-1])
+	if err != nil {
+		return err
+	}
+	name := parts[len(parts)-1]
+	if _, ok := parent.children[name]; !ok {
+		return fmt.Errorf("%w: %s", ErrNotFound, p)
+	}
+	delete(parent.children, name)
+	return nil
+}

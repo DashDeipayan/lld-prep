@@ -1,0 +1,13 @@
+{
+  "title": "E-commerce Orders & Inventory Reservation",
+  "difficulty": "hard",
+  "summary": "Amazon-style order flow: atomic multi-SKU stock reservation, an order state machine, payment and refunds through a gateway, cancellation rules, and no overselling.",
+  "minutes": 75,
+  "tags": ["e-commerce", "state", "inventory", "concurrency", "classic-problem"],
+  "hints": [
+    "Merge duplicate SKUs in the order request first (`A×2, A×1` becomes `A×3`), then validate everything, then reserve everything under one inventory lock.",
+    "Stock is deducted on placement (a reservation), and returned only when an order is cancelled.",
+    "Order lifecycle: CREATED → PAID → SHIPPED → DELIVERED. Cancel is allowed from CREATED (release stock) and PAID (release stock + refund).",
+    "A failed charge leaves the order CREATED, so the customer can retry payment."
+  ]
+}

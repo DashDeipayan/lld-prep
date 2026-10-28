@@ -1,0 +1,13 @@
+{
+  "title": "Build a Parking Lot from Scratch",
+  "summary": "The most-asked LLD problem, built in 6 tested steps: model, floors, allocation, pricing, a live display board, and concurrency.",
+  "minutes": 150,
+  "steps": [
+    { "title": "Model spots and vehicles", "doc": "steps/1.md" },
+    { "title": "Floors and availability", "doc": "steps/2.md" },
+    { "title": "Park: tickets and spot allocation (Strategy)", "doc": "steps/3.md" },
+    { "title": "Unpark: receipts and pricing (Strategy)", "doc": "steps/4.md" },
+    { "title": "Display board (Observer)", "doc": "steps/5.md" },
+    { "title": "Make it thread-safe", "doc": "steps/6.md" }
+  ]
+}

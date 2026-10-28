@@ -1,0 +1,13 @@
+{
+  "title": "Elevator System (LOOK + Dispatch Strategy)",
+  "difficulty": "hard",
+  "summary": "Multiple cars, hall and car calls, LOOK scheduling per car, a cost-based dispatcher, and deterministic time via step().",
+  "minutes": 90,
+  "tags": ["elevator", "scheduling", "strategy", "mediator", "simulation"],
+  "hints": [
+    "Each car holds a sorted set of stops. `step()` follows the five rules in the problem **in order**. Write them as five short `if` blocks.",
+    "Java `TreeSet.higher(floor)` / `lower(floor)` answer whether there's a stop above or below. In Go, scan the stops (a map or a sorted slice). Buildings are small.",
+    "Dispatch: compute a cost per car and keep the minimum. Strict `<` gives you 'ties → lowest id' for free.",
+    "`requestPickup` adds the floor as a stop on the **chosen** car. `requestDestination` adds it to the given car."
+  ]
+}

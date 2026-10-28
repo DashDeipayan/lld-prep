@@ -1,0 +1,13 @@
+{
+  "title": "Snake & Ladder",
+  "difficulty": "medium",
+  "summary": "Board validation, injected dice, exact-finish rule, extra turn on a six and the three-sixes penalty. A machine-coding favourite.",
+  "minutes": 60,
+  "tags": ["game", "classic-problem", "machine-coding", "dependency-injection"],
+  "hints": [
+    "Store snakes and ladders in **one** `Map<Integer,Integer> jumps`. The game doesn't care which kind it is, only the board does when validating.",
+    "Inject the dice. Tests pass a scripted sequence, which is why `Dice` is an interface.",
+    "Track `turnStart` (position before the current player's first roll this turn) and `sixes` (consecutive sixes). Reset both when the turn passes to the next player.",
+    "Order of a move: overshoot → stay. Otherwise move, then apply a jump if one exists, then check for a win. Then decide who plays next."
+  ]
+}

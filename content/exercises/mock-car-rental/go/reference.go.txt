@@ -1,0 +1,181 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+)
+
+type CarType int
+
+const (
+	Hatchback CarType = iota
+	Sedan
+	SUV
+)
+
+type Reservation struct {
+	ID, Customer, CarID string
+	StartDay, EndDay    int
+	Cost                int64
+	Status              string
+}
+
+var (
+	ErrInvalid   = errors.New("invalid request")
+	ErrNotFound  = errors.New("not found")
+	ErrConflict  = errors.New("conflict")
+	ErrBadStatus = errors.New("bad status")
+)
+
+type car struct {
+	id     string
+	city   string
+	typ    CarType
+	rate   int64
+	active []string // reservation ids
+}
+
+type RentalService struct {
+	mu           sync.Mutex
+	branches     map[string]string // id -> city
+	cars         map[string]*car
+	reservations map[string]*Reservation
+	next         int
+}
+
+func NewRentalService() *RentalService {
+	return &RentalService{branches: map[string]string{}, cars: map[string]*car{}, reservations: map[string]*Reservation{}}
+}
+
+func (r *RentalService) free(c *car, s, e int) bool {
+	for _, id := range c.active {
+		res := r.reservations[id]
+		if s < res.EndDay && res.StartDay < e {
+			return false
+		}
+	}
+	return true
+}
+
+func validRange(s, e int) error {
+	if s < 0 || s >= e {
+		return fmt.Errorf("%w: range [%d,%d)", ErrInvalid, s, e)
+	}
+	return nil
+}
+
+func (r *RentalService) AddBranch(id, city string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, dup := r.branches[id]; dup {
+		return fmt.Errorf("%w: duplicate branch", ErrInvalid)
+	}
+	r.branches[id] = city
+	return nil
+}
+
+func (r *RentalService) AddCar(branch, carID string, t CarType, rate int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	city, ok := r.branches[branch]
+	if !ok {
+		return fmt.Errorf("%w: branch %s", ErrNotFound, branch)
+	}
+	if _, dup := r.cars[carID]; dup || rate <= 0 {
+		return fmt.Errorf("%w: car %s", ErrInvalid, carID)
+	}
+	r.cars[carID] = &car{id: carID, city: city, typ: t, rate: rate}
+	return nil
+}
+
+func (r *RentalService) Search(city string, t CarType, start, end int) ([]string, error) {
+	if err := validRange(start, end); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var found []*car
+	for _, c := range r.cars {
+		if c.typ == t && strings.EqualFold(c.city, city) && r.free(c, start, end) {
+			found = append(found, c)
+		}
+	}
+	sort.Slice(found, func(i, j int) bool {
+		if found[i].rate != found[j].rate {
+			return found[i].rate < found[j].rate
+		}
+		return found[i].id < found[j].id
+	})
+	out := []string{}
+	for _, c := range found {
+		out = append(out, c.id)
+	}
+	return out, nil
+}
+
+func (r *RentalService) Reserve(customer, carID string, start, end int) (Reservation, error) {
+	if err := validRange(start, end); err != nil {
+		return Reservation{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cars[carID]
+	if !ok {
+		return Reservation{}, fmt.Errorf("%w: car %s", ErrNotFound, carID)
+	}
+	if !r.free(c, start, end) {
+		return Reservation{}, fmt.Errorf("%w: %s", ErrConflict, carID)
+	}
+	r.next++
+	res := &Reservation{fmt.Sprintf("RS%d", r.next), customer, carID, start, end, int64(end-start) * c.rate, "RESERVED"}
+	r.reservations[res.ID] = res
+	c.active = append(c.active, res.ID)
+	return *res, nil
+}
+
+func (r *RentalService) active(id string) (*Reservation, error) {
+	res, ok := r.reservations[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: reservation %s", ErrNotFound, id)
+	}
+	if res.Status != "RESERVED" {
+		return nil, fmt.Errorf("%w: %s", ErrBadStatus, res.Status)
+	}
+	return res, nil
+}
+
+func (r *RentalService) release(res *Reservation) {
+	c := r.cars[res.CarID]
+	c.active = slices.DeleteFunc(c.active, func(x string) bool { return x == res.ID })
+}
+
+func (r *RentalService) Cancel(id string) (Reservation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	res, err := r.active(id)
+	if err != nil {
+		return Reservation{}, err
+	}
+	r.release(res)
+	res.Status = "CANCELLED"
+	return *res, nil
+}
+
+func (r *RentalService) ReturnCar(id string, actualDay int) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	res, err := r.active(id)
+	if err != nil {
+		return 0, err
+	}
+	rate := r.cars[res.CarID].rate
+	late := int64(max(0, actualDay-res.EndDay))
+	res.Cost += late * rate * 3 / 2
+	res.Status = "COMPLETED"
+	r.release(res)
+	return res.Cost, nil
+}

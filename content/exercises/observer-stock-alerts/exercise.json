@@ -1,0 +1,13 @@
+{
+  "title": "Stock Price Alerts (Observer)",
+  "difficulty": "easy",
+  "summary": "A ticker notifies subscribed listeners on price changes. Edge-triggered threshold alerts, unsubscribe handles, and failure isolation.",
+  "minutes": 40,
+  "tags": ["observer", "events", "edge-triggered"],
+  "hints": [
+    "Ticker: remember the last price per symbol and only notify when it **changes**.",
+    "Notify over a **snapshot** of listeners (`CopyOnWriteArrayList`, or copy the slice) so a listener can unsubscribe itself mid-notification.",
+    "Wrap each listener call: catch `RuntimeException` in Java, `defer recover()` in Go.",
+    "Alert: keep a `boolean triggered`. Fire when the condition becomes true **and** `!triggered`. Reset when the condition is false again. Ignore other symbols."
+  ]
+}

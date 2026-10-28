@@ -1,0 +1,361 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+// ======================= Provided =======================
+
+var (
+	ErrNotFound        = errors.New("not found")
+	ErrInvalid         = errors.New("invalid request")
+	ErrOverlap         = errors.New("show overlaps")
+	ErrSeatUnavailable = errors.New("seat unavailable")
+	ErrHoldNotActive   = errors.New("hold not active")
+	ErrPaymentFailed   = errors.New("payment failed")
+	ErrShowStarted     = errors.New("show already started")
+)
+
+type PaymentGateway interface {
+	Charge(user string, amount int64) bool
+}
+
+type GatewayFunc func(user string, amount int64) bool
+
+func (f GatewayFunc) Charge(u string, a int64) bool { return f(u, a) }
+
+type Booking struct {
+	ID, ShowID, User string
+	Seats            []string
+	Amount           int64
+	Status           string
+}
+
+// ======================= Catalogue =======================
+
+type seatType int
+
+const (
+	regular seatType = iota
+	premium
+)
+
+type theatre struct{ id, city string }
+
+type screen struct {
+	id      string
+	theatre *theatre
+	layout  map[string]seatType
+}
+
+type movie struct {
+	id, title string
+	duration  time.Duration
+}
+
+// ======================= Inventory =======================
+
+type seatStatus int
+
+const (
+	available seatStatus = iota
+	held
+	booked
+)
+
+type seatState struct {
+	status    seatStatus
+	holdID    string
+	expiresAt time.Time
+}
+
+type show struct {
+	mu         sync.Mutex // one lock per show
+	id         string
+	movie      *movie
+	screen     *screen
+	start, end time.Time
+	prices     map[seatType]int64
+	seats      map[string]*seatState
+}
+
+func (s *show) free(st *seatState, now time.Time) bool {
+	return st.status == available || (st.status == held && !now.Before(st.expiresAt))
+}
+
+type hold struct {
+	id, user  string
+	show      *show
+	seats     []string
+	expiresAt time.Time
+}
+
+type BookingService struct {
+	mu       sync.Mutex // guards the catalogue maps and id counters
+	gw       PaymentGateway
+	clock    func() time.Time
+	ttl      time.Duration
+	theatres map[string]*theatre
+	screens  map[string]*screen
+	movies   map[string]*movie
+	shows    map[string]*show
+	holds    map[string]*hold
+	bookings map[string]*Booking
+	nShow    int
+	nHold    int
+	nBooking int
+}
+
+func NewBookingService(gw PaymentGateway, clock func() time.Time, holdTTL time.Duration) *BookingService {
+	return &BookingService{gw: gw, clock: clock, ttl: holdTTL,
+		theatres: map[string]*theatre{}, screens: map[string]*screen{}, movies: map[string]*movie{},
+		shows: map[string]*show{}, holds: map[string]*hold{}, bookings: map[string]*Booking{}}
+}
+
+func notFound(what, id string) error { return fmt.Errorf("%w: %s %s", ErrNotFound, what, id) }
+
+func (b *BookingService) AddTheatre(id, city string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.theatres[id]; ok {
+		return fmt.Errorf("%w: duplicate theatre", ErrInvalid)
+	}
+	b.theatres[id] = &theatre{id, city}
+	return nil
+}
+
+func (b *BookingService) AddScreen(theatreID, screenID string, regularRows, premiumRows, seatsPerRow int) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t, ok := b.theatres[theatreID]
+	if !ok {
+		return notFound("theatre", theatreID)
+	}
+	rows := regularRows + premiumRows
+	if regularRows < 0 || premiumRows < 0 || rows == 0 || rows > 26 || seatsPerRow < 1 {
+		return fmt.Errorf("%w: layout", ErrInvalid)
+	}
+	if _, dup := b.screens[screenID]; dup {
+		return fmt.Errorf("%w: duplicate screen", ErrInvalid)
+	}
+	layout := map[string]seatType{}
+	for r := 0; r < rows; r++ {
+		for n := 1; n <= seatsPerRow; n++ {
+			st := regular
+			if r >= regularRows {
+				st = premium
+			}
+			layout[fmt.Sprintf("%c%d", 'A'+r, n)] = st
+		}
+	}
+	b.screens[screenID] = &screen{screenID, t, layout}
+	return nil
+}
+
+func (b *BookingService) AddMovie(id, title string, minutes int) error {
+	if minutes <= 0 {
+		return fmt.Errorf("%w: duration", ErrInvalid)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, dup := b.movies[id]; dup {
+		return fmt.Errorf("%w: duplicate movie", ErrInvalid)
+	}
+	b.movies[id] = &movie{id, title, time.Duration(minutes) * time.Minute}
+	return nil
+}
+
+func (b *BookingService) AddShow(movieID, screenID string, start time.Time, regularPrice, premiumPrice int64) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m, ok := b.movies[movieID]
+	if !ok {
+		return "", notFound("movie", movieID)
+	}
+	sc, ok := b.screens[screenID]
+	if !ok {
+		return "", notFound("screen", screenID)
+	}
+	end := start.Add(m.duration)
+	for _, s := range b.shows {
+		if s.screen == sc && start.Before(s.end) && s.start.Before(end) {
+			return "", fmt.Errorf("%w: %s", ErrOverlap, s.id)
+		}
+	}
+	b.nShow++
+	id := fmt.Sprintf("S%d", b.nShow)
+	s := &show{id: id, movie: m, screen: sc, start: start, end: end,
+		prices: map[seatType]int64{regular: regularPrice, premium: premiumPrice}, seats: map[string]*seatState{}}
+	for seat := range sc.layout {
+		s.seats[seat] = &seatState{}
+	}
+	b.shows[id] = s
+	return id, nil
+}
+
+func (b *BookingService) FindShows(city, movieID string) []string {
+	now := b.clock()
+	b.mu.Lock()
+	var found []*show
+	for _, s := range b.shows {
+		if s.movie.id == movieID && strings.EqualFold(s.screen.theatre.city, city) && s.start.After(now) {
+			found = append(found, s)
+		}
+	}
+	b.mu.Unlock()
+	sort.Slice(found, func(i, j int) bool {
+		if !found[i].start.Equal(found[j].start) {
+			return found[i].start.Before(found[j].start)
+		}
+		return found[i].id < found[j].id
+	})
+	out := []string{}
+	for _, s := range found {
+		out = append(out, s.id)
+	}
+	return out
+}
+
+func (b *BookingService) show(id string) (*show, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	s, ok := b.shows[id]
+	if !ok {
+		return nil, notFound("show", id)
+	}
+	return s, nil
+}
+
+func (b *BookingService) AvailableSeats(showID string) ([]string, error) {
+	s, err := b.show(showID)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := b.clock()
+	out := []string{}
+	for id, st := range s.seats {
+		if s.free(st, now) {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+func (b *BookingService) nextID(prefix string, n *int) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	*n++
+	return fmt.Sprintf("%s%d", prefix, *n)
+}
+
+func (b *BookingService) Hold(showID, user string, seats []string) (string, error) {
+	s, err := b.show(showID)
+	if err != nil {
+		return "", err
+	}
+	if len(seats) == 0 {
+		return "", fmt.Errorf("%w: no seats", ErrInvalid)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := b.clock()
+	if !now.Before(s.start) {
+		return "", ErrShowStarted
+	}
+	seen := map[string]bool{}
+	for _, id := range seats {
+		st, ok := s.seats[id]
+		if !ok || seen[id] {
+			return "", fmt.Errorf("%w: seat %s", ErrInvalid, id)
+		}
+		seen[id] = true
+		if !s.free(st, now) {
+			return "", fmt.Errorf("%w: %s", ErrSeatUnavailable, id)
+		}
+	}
+	hid := b.nextID("H", &b.nHold)
+	exp := now.Add(b.ttl)
+	for _, id := range seats {
+		*s.seats[id] = seatState{status: held, holdID: hid, expiresAt: exp}
+	}
+	sorted := slices.Clone(seats)
+	slices.Sort(sorted)
+	b.mu.Lock()
+	b.holds[hid] = &hold{id: hid, user: user, show: s, seats: sorted, expiresAt: exp}
+	b.mu.Unlock()
+	return hid, nil
+}
+
+func (b *BookingService) Confirm(holdID string) (*Booking, error) {
+	b.mu.Lock()
+	h, ok := b.holds[holdID]
+	delete(b.holds, holdID)
+	b.mu.Unlock()
+	if !ok {
+		return nil, ErrHoldNotActive
+	}
+	s := h.show
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := b.clock()
+	if !now.Before(h.expiresAt) {
+		return nil, ErrHoldNotActive
+	}
+	var amount int64
+	for _, id := range h.seats {
+		st := s.seats[id]
+		if st.status != held || st.holdID != holdID {
+			return nil, ErrHoldNotActive
+		}
+		amount += s.prices[s.screen.layout[id]]
+	}
+	// NOTE: production code would call the gateway outside the show lock (see lesson).
+	if !b.gw.Charge(h.user, amount) {
+		for _, id := range h.seats {
+			*s.seats[id] = seatState{}
+		}
+		return nil, ErrPaymentFailed
+	}
+	for _, id := range h.seats {
+		s.seats[id].status = booked
+	}
+	bk := &Booking{ID: b.nextID("B", &b.nBooking), ShowID: s.id, User: h.user, Seats: h.seats, Amount: amount, Status: "CONFIRMED"}
+	b.mu.Lock()
+	b.bookings[bk.ID] = bk
+	b.mu.Unlock()
+	cp := *bk
+	return &cp, nil
+}
+
+func (b *BookingService) Cancel(bookingID string) (*Booking, error) {
+	b.mu.Lock()
+	bk, ok := b.bookings[bookingID]
+	b.mu.Unlock()
+	if !ok {
+		return nil, notFound("booking", bookingID)
+	}
+	s, _ := b.show(bk.ShowID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if bk.Status != "CONFIRMED" {
+		return nil, fmt.Errorf("%w: already cancelled", ErrInvalid)
+	}
+	if !b.clock().Before(s.start) {
+		return nil, ErrShowStarted
+	}
+	for _, id := range bk.Seats {
+		*s.seats[id] = seatState{}
+	}
+	bk.Status = "CANCELLED"
+	cp := *bk
+	return &cp, nil
+}

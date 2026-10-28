@@ -1,0 +1,92 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"maps"
+	"strings"
+	"time"
+)
+
+var (
+	ErrInvalidURL     = errors.New("invalid url")
+	ErrInvalidMethod  = errors.New("invalid method")
+	ErrInvalidTimeout = errors.New("invalid timeout")
+	ErrBodyNotAllowed = errors.New("body not allowed for this method")
+)
+
+var methods = map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true}
+
+type Request struct {
+	method  string
+	url     string
+	headers map[string]string
+	timeout time.Duration
+	body    string
+}
+
+type Option func(*Request) error
+
+func WithMethod(m string) Option {
+	return func(r *Request) error {
+		up := strings.ToUpper(m)
+		if !methods[up] {
+			return fmt.Errorf("%w: %q", ErrInvalidMethod, m)
+		}
+		r.method = up
+		return nil
+	}
+}
+
+func WithHeader(name, value string) Option {
+	return func(r *Request) error {
+		r.headers[strings.ToLower(name)] = value
+		return nil
+	}
+}
+
+func WithTimeout(d time.Duration) Option {
+	return func(r *Request) error {
+		if d < time.Millisecond || d > time.Minute {
+			return fmt.Errorf("%w: %v", ErrInvalidTimeout, d)
+		}
+		r.timeout = d
+		return nil
+	}
+}
+
+func WithBody(b string) Option {
+	return func(r *Request) error {
+		r.body = b
+		return nil
+	}
+}
+
+func NewRequest(url string, opts ...Option) (*Request, error) {
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidURL, url)
+	}
+	r := &Request{method: "GET", url: url, headers: map[string]string{}, timeout: 30 * time.Second}
+	for _, o := range opts {
+		if err := o(r); err != nil {
+			return nil, err
+		}
+	}
+	if r.body != "" && (r.method == "GET" || r.method == "DELETE") {
+		return nil, fmt.Errorf("%w: %s", ErrBodyNotAllowed, r.method)
+	}
+	return r, nil
+}
+
+func (r *Request) Method() string { return r.method }
+func (r *Request) URL() string    { return r.url }
+
+func (r *Request) Header(name string) (string, bool) {
+	v, ok := r.headers[strings.ToLower(name)]
+	return v, ok
+}
+
+// Headers returns a copy so callers cannot mutate the request.
+func (r *Request) Headers() map[string]string { return maps.Clone(r.headers) }
+func (r *Request) Timeout() time.Duration     { return r.timeout }
+func (r *Request) Body() string               { return r.body }

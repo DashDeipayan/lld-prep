@@ -1,0 +1,114 @@
+package main
+
+import (
+	"errors"
+	"sync"
+	"time"
+)
+
+var ErrClosed = errors.New("queue closed")
+
+// BoundedQueue uses a mutex-protected ring of items plus "wake-up" channels.
+// Waiters grab the current signal channel under the lock, release the lock and
+// select on it (plus an optional timer). Any state change closes and replaces
+// the channel, which acts as a broadcast that also works with timeouts.
+type BoundedQueue[T any] struct {
+	mu      sync.Mutex
+	items   []T
+	cap     int
+	closed  bool
+	changed chan struct{}
+}
+
+func NewBoundedQueue[T any](capacity int) *BoundedQueue[T] {
+	if capacity < 1 {
+		panic("capacity must be >= 1")
+	}
+	return &BoundedQueue[T]{cap: capacity, changed: make(chan struct{})}
+}
+
+// broadcast must be called with mu held.
+func (q *BoundedQueue[T]) broadcast() {
+	close(q.changed)
+	q.changed = make(chan struct{})
+}
+
+// wait blocks until ready() is true (mu held when it returns true) or the deadline passes.
+func (q *BoundedQueue[T]) wait(ready func() bool, deadline <-chan time.Time) bool {
+	for !ready() {
+		ch := q.changed
+		q.mu.Unlock()
+		select {
+		case <-ch:
+			q.mu.Lock()
+		case <-deadline:
+			q.mu.Lock()
+			return ready()
+		}
+	}
+	return true
+}
+
+func (q *BoundedQueue[T]) Put(x T) error {
+	_, err := q.offer(x, nil)
+	return err
+}
+
+func (q *BoundedQueue[T]) Offer(x T, timeout time.Duration) (bool, error) {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	return q.offer(x, t.C)
+}
+
+func (q *BoundedQueue[T]) offer(x T, deadline <-chan time.Time) (bool, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	ok := q.wait(func() bool { return q.closed || len(q.items) < q.cap }, deadline)
+	if q.closed {
+		return false, ErrClosed
+	}
+	if !ok {
+		return false, nil
+	}
+	q.items = append(q.items, x)
+	q.broadcast()
+	return true, nil
+}
+
+func (q *BoundedQueue[T]) Take() (T, bool) { return q.poll(nil) }
+
+func (q *BoundedQueue[T]) Poll(timeout time.Duration) (T, bool) {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+	return q.poll(t.C)
+}
+
+func (q *BoundedQueue[T]) poll(deadline <-chan time.Time) (T, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.wait(func() bool { return q.closed || len(q.items) > 0 }, deadline)
+	var zero T
+	if len(q.items) == 0 {
+		return zero, false
+	}
+	x := q.items[0]
+	q.items[0] = zero
+	q.items = q.items[1:]
+	q.broadcast()
+	return x, true
+}
+
+func (q *BoundedQueue[T]) Close() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if !q.closed {
+		q.closed = true
+		q.broadcast()
+	}
+}
+
+func (q *BoundedQueue[T]) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.items)
+}

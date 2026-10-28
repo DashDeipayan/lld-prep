@@ -1,0 +1,13 @@
+{
+  "title": "Retry, Rate-Limit & Log a Sender (Decorator)",
+  "difficulty": "medium",
+  "summary": "Add retries, a per-recipient sliding-window rate limit and logging to any Sender by wrapping it, in any order.",
+  "minutes": 40,
+  "tags": ["decorator", "rate-limiting", "retry", "clock-injection"],
+  "hints": [
+    "Each decorator implements `Sender`, holds an inner `Sender`, and is created with the inner one.",
+    "Retry: loop `maxAttempts` times, return on the first success, then rethrow (or return) the **last** error.",
+    "Rate limit: keep a `Map<recipient, Deque<timestamp>>`. Drop timestamps where `now - ts >= window`. If `size >= max`, reject **without** calling inner. Record the timestamp only after inner succeeds.",
+    "Never call the real clock. Use the injected `Clock`, so tests can move time forward."
+  ]
+}

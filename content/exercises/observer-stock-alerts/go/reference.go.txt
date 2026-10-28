@@ -1,0 +1,108 @@
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+type PriceListener interface {
+	OnPrice(symbol string, price int64)
+}
+
+type subscription struct {
+	l      PriceListener
+	active bool
+}
+
+type StockTicker struct {
+	mu   sync.Mutex
+	last map[string]int64
+	subs []*subscription
+}
+
+func NewStockTicker() *StockTicker { return &StockTicker{last: map[string]int64{}} }
+
+func (t *StockTicker) Subscribe(l PriceListener) func() {
+	s := &subscription{l: l, active: true}
+	t.mu.Lock()
+	t.subs = append(t.subs, s)
+	t.mu.Unlock()
+	return func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if !s.active {
+			return
+		}
+		s.active = false
+		for i, x := range t.subs {
+			if x == s {
+				t.subs = append(t.subs[:i:i], t.subs[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+func (t *StockTicker) Update(symbol string, price int64) {
+	t.mu.Lock()
+	prev, seen := t.last[symbol]
+	if seen && prev == price {
+		t.mu.Unlock()
+		return
+	}
+	t.last[symbol] = price
+	snapshot := append([]*subscription(nil), t.subs...)
+	t.mu.Unlock()
+
+	// Notify outside the lock so listeners can call back into the ticker.
+	for _, s := range snapshot {
+		t.mu.Lock()
+		active := s.active
+		t.mu.Unlock()
+		if active {
+			safeNotify(s.l, symbol, price)
+		}
+	}
+}
+
+func safeNotify(l PriceListener, symbol string, price int64) {
+	defer func() { _ = recover() }() // isolate a faulty listener
+	l.OnPrice(symbol, price)
+}
+
+func (t *StockTicker) ListenerCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.subs)
+}
+
+type thresholdAlert struct {
+	symbol    string
+	threshold int64
+	above     bool
+	sink      *[]string
+	triggered bool
+}
+
+func NewThresholdAlert(symbol string, threshold int64, above bool, sink *[]string) PriceListener {
+	return &thresholdAlert{symbol: symbol, threshold: threshold, above: above, sink: sink}
+}
+
+func (a *thresholdAlert) OnPrice(symbol string, price int64) {
+	if symbol != a.symbol {
+		return
+	}
+	hit := price <= a.threshold
+	op := "<="
+	if a.above {
+		hit, op = price >= a.threshold, ">="
+	}
+	if hit && !a.triggered {
+		*a.sink = append(*a.sink, fmt.Sprintf("%s%s%d @%d", a.symbol, op, a.threshold, price))
+	}
+	a.triggered = hit
+}
+
+type ListenerFunc func(symbol string, price int64)
+
+func (f ListenerFunc) OnPrice(s string, p int64) { f(s, p) }

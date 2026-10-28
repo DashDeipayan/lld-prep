@@ -1,0 +1,91 @@
+package main
+
+import "errors"
+
+type Player int
+
+const (
+	X Player = iota
+	O
+)
+
+type Status int
+
+const (
+	InProgress Status = iota
+	XWon
+	OWon
+	Draw
+)
+
+var (
+	ErrGameOver    = errors.New("game over")
+	ErrOutOfBounds = errors.New("out of bounds")
+	ErrOccupied    = errors.New("cell occupied")
+	ErrWrongTurn   = errors.New("wrong turn")
+)
+
+type Game struct {
+	n          int
+	board      [][]byte
+	rows, cols []int
+	diag, anti int
+	moves      int
+	turn       Player
+	status     Status
+}
+
+func NewGame(n int) *Game {
+	if n < 3 {
+		panic("n must be >= 3")
+	}
+	b := make([][]byte, n)
+	for i := range b {
+		b[i] = make([]byte, n)
+		for j := range b[i] {
+			b[i][j] = '.'
+		}
+	}
+	return &Game{n: n, board: b, rows: make([]int, n), cols: make([]int, n)}
+}
+
+func (g *Game) Move(p Player, row, col int) (Status, error) {
+	switch {
+	case g.status != InProgress:
+		return g.status, ErrGameOver
+	case row < 0 || row >= g.n || col < 0 || col >= g.n:
+		return g.status, ErrOutOfBounds
+	case g.board[row][col] != '.':
+		return g.status, ErrOccupied
+	case p != g.turn:
+		return g.status, ErrWrongTurn
+	}
+	d, mark := 1, byte('X')
+	if p == O {
+		d, mark = -1, 'O'
+	}
+	g.board[row][col] = mark
+	g.moves++
+	g.rows[row] += d
+	g.cols[col] += d
+	if row == col {
+		g.diag += d
+	}
+	if row+col == g.n-1 {
+		g.anti += d
+	}
+	target := d * g.n
+	if g.rows[row] == target || g.cols[col] == target || g.diag == target || g.anti == target {
+		g.status = XWon
+		if p == O {
+			g.status = OWon
+		}
+	} else if g.moves == g.n*g.n {
+		g.status = Draw
+	}
+	g.turn = 1 - g.turn
+	return g.status, nil
+}
+
+func (g *Game) Status() Status         { return g.status }
+func (g *Game) Cell(row, col int) byte { return g.board[row][col] }

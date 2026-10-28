@@ -1,0 +1,120 @@
+package main
+
+import (
+	"math"
+	"sync"
+	"time"
+)
+
+type RateLimiter interface {
+	Allow(key string) bool
+}
+
+type Clock func() time.Time
+
+// ---- token bucket ----
+
+type bucket struct {
+	tokens float64
+	last   time.Time
+}
+
+type tokenBucket struct {
+	mu       sync.Mutex
+	capacity float64
+	rate     float64 // tokens per second
+	clock    Clock
+	buckets  map[string]*bucket
+}
+
+func NewTokenBucket(capacity int, refillPerSecond float64, c Clock) RateLimiter {
+	return &tokenBucket{capacity: float64(capacity), rate: refillPerSecond, clock: c, buckets: map[string]*bucket{}}
+}
+
+func (t *tokenBucket) Allow(key string) bool {
+	now := t.clock()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	b, ok := t.buckets[key]
+	if !ok {
+		b = &bucket{tokens: t.capacity, last: now}
+		t.buckets[key] = b
+	}
+	if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
+		b.tokens = math.Min(t.capacity, b.tokens+elapsed*t.rate)
+		b.last = now
+	}
+	if b.tokens >= 1-1e-9 { // epsilon: 0.3+0.3+0.3+0.1 < 1.0 in floating point
+		b.tokens = math.Max(0, b.tokens-1)
+		return true
+	}
+	return false
+}
+
+// ---- fixed window ----
+
+type window struct {
+	start int64
+	count int
+}
+
+type fixedWindow struct {
+	mu      sync.Mutex
+	max     int
+	size    int64 // ms
+	clock   Clock
+	windows map[string]*window
+}
+
+func NewFixedWindow(max int, w time.Duration, c Clock) RateLimiter {
+	return &fixedWindow{max: max, size: w.Milliseconds(), clock: c, windows: map[string]*window{}}
+}
+
+func (f *fixedWindow) Allow(key string) bool {
+	now := f.clock().UnixMilli()
+	start := now - ((now%f.size)+f.size)%f.size
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	w, ok := f.windows[key]
+	if !ok || w.start != start {
+		w = &window{start: start}
+		f.windows[key] = w
+	}
+	if w.count >= f.max {
+		return false
+	}
+	w.count++
+	return true
+}
+
+// ---- sliding window log ----
+
+type slidingWindow struct {
+	mu     sync.Mutex
+	max    int
+	window time.Duration
+	clock  Clock
+	logs   map[string][]time.Time
+}
+
+func NewSlidingWindow(max int, w time.Duration, c Clock) RateLimiter {
+	return &slidingWindow{max: max, window: w, clock: c, logs: map[string][]time.Time{}}
+}
+
+func (s *slidingWindow) Allow(key string) bool {
+	now := s.clock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	log := s.logs[key]
+	i := 0
+	for i < len(log) && now.Sub(log[i]) >= s.window {
+		i++
+	}
+	log = log[i:]
+	if len(log) >= s.max {
+		s.logs[key] = log
+		return false
+	}
+	s.logs[key] = append(log, now)
+	return true
+}

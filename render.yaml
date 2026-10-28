@@ -1,0 +1,14 @@
+# Render Blueprint: New > Blueprint, point it at this repo.
+services:
+  - type: web
+    name: lldprep
+    runtime: docker
+    plan: starter            # a persistent disk needs a paid instance
+    healthCheckPath: /healthz
+    envVars:
+      - key: LLDPREP_PASSWORD
+        sync: false          # Render asks for the value when you create it
+    disk:
+      name: lldprep-data
+      mountPath: /data
+      sizeGB: 1

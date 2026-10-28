@@ -1,0 +1,13 @@
+{
+  "title": "In-Memory File System (Composite)",
+  "difficulty": "medium",
+  "summary": "mkdir -p, files, recursive size, ls, find-by-extension and recursive delete over a tree where files and directories share one interface.",
+  "minutes": 45,
+  "tags": ["composite", "tree", "recursion", "classic-problem"],
+  "hints": [
+    "There's one `Node` interface (`name()`, `size()`) with `File` and `Directory` implementations. `Directory.size()` sums its children recursively.",
+    "Store a directory's children in a `TreeMap`/sorted map, or sort when listing, so `ls` output is deterministic.",
+    "Write one private `resolve(path)` that walks the segments from root and returns the node, or fails with not found. Every operation reuses it.",
+    "`find` is a depth-first walk that builds full paths as it goes. Sort the result at the end."
+  ]
+}

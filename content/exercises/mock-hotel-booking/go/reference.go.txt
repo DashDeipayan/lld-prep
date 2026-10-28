@@ -1,0 +1,192 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+)
+
+type RoomType int
+
+const (
+	Single RoomType = iota
+	Double
+	Suite
+)
+
+var (
+	ErrInvalid   = errors.New("invalid request")
+	ErrNotFound  = errors.New("not found")
+	ErrNoRoom    = errors.New("no room available")
+	ErrBadStatus = errors.New("bad status")
+)
+
+type room struct {
+	number string
+	typ    RoomType
+	rate   int64
+}
+
+type booking struct {
+	id, guest string
+	room      *room
+	in, out   int
+	status    string
+	charges   int64
+}
+
+func (b *booking) blocks(s, e int) bool {
+	return (b.status == "BOOKED" || b.status == "CHECKED_IN") && s < b.out && b.in < e
+}
+
+type Hotel struct {
+	mu       sync.Mutex
+	rooms    []*room // sorted by number
+	bookings map[string]*booking
+	next     int
+}
+
+func NewHotel() *Hotel { return &Hotel{bookings: map[string]*booking{}} }
+
+func valid(in, out int) error {
+	if in < 0 || in >= out {
+		return fmt.Errorf("%w: stay [%d,%d)", ErrInvalid, in, out)
+	}
+	return nil
+}
+
+func (h *Hotel) free(r *room, s, e int) bool {
+	for _, b := range h.bookings {
+		if b.room == r && b.blocks(s, e) {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *Hotel) AddRoom(number string, t RoomType, rate int64) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.rooms {
+		if r.number == number {
+			return fmt.Errorf("%w: duplicate room", ErrInvalid)
+		}
+	}
+	if rate <= 0 {
+		return ErrInvalid
+	}
+	h.rooms = append(h.rooms, &room{number, t, rate})
+	sort.Slice(h.rooms, func(i, j int) bool { return h.rooms[i].number < h.rooms[j].number })
+	return nil
+}
+
+func (h *Hotel) Availability(in, out int) (map[RoomType]int, error) {
+	if err := valid(in, out); err != nil {
+		return nil, err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	m := map[RoomType]int{Single: 0, Double: 0, Suite: 0}
+	for _, r := range h.rooms {
+		if h.free(r, in, out) {
+			m[r.typ]++
+		}
+	}
+	return m, nil
+}
+
+func (h *Hotel) Book(guest string, t RoomType, in, out int) (string, error) {
+	if err := valid(in, out); err != nil {
+		return "", err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.rooms {
+		if r.typ == t && h.free(r, in, out) {
+			h.next++
+			b := &booking{id: fmt.Sprintf("BK%d", h.next), guest: guest, room: r, in: in, out: out, status: "BOOKED"}
+			h.bookings[b.id] = b
+			return b.id, nil
+		}
+	}
+	return "", ErrNoRoom
+}
+
+func (h *Hotel) get(id string) (*booking, error) {
+	b, ok := h.bookings[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: booking %s", ErrNotFound, id)
+	}
+	return b, nil
+}
+
+func (h *Hotel) step(id, from, to string, check func(*booking) error) (*booking, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	b, err := h.get(id)
+	if err != nil {
+		return nil, err
+	}
+	if b.status != from {
+		return nil, fmt.Errorf("%w: %s", ErrBadStatus, b.status)
+	}
+	if check != nil {
+		if err := check(b); err != nil {
+			return nil, err
+		}
+	}
+	b.status = to
+	return b, nil
+}
+
+func (h *Hotel) RoomOf(id string) (string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	b, err := h.get(id)
+	if err != nil {
+		return "", err
+	}
+	return b.room.number, nil
+}
+
+func (h *Hotel) CheckIn(id string, day int) error {
+	_, err := h.step(id, "BOOKED", "CHECKED_IN", func(b *booking) error {
+		if day != b.in {
+			return fmt.Errorf("%w: check-in is on day %d", ErrBadStatus, b.in)
+		}
+		return nil
+	})
+	return err
+}
+
+func (h *Hotel) AddCharge(id string, amount int64) error {
+	if amount <= 0 {
+		return ErrInvalid
+	}
+	_, err := h.step(id, "CHECKED_IN", "CHECKED_IN", func(b *booking) error { b.charges += amount; return nil })
+	return err
+}
+
+func (h *Hotel) CheckOut(id string) (int64, error) {
+	b, err := h.step(id, "CHECKED_IN", "CHECKED_OUT", nil)
+	if err != nil {
+		return 0, err
+	}
+	return int64(b.out-b.in)*b.room.rate + b.charges, nil
+}
+
+func (h *Hotel) Cancel(id string) error {
+	_, err := h.step(id, "BOOKED", "CANCELLED", nil)
+	return err
+}
+
+func (h *Hotel) Status(id string) (string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	b, err := h.get(id)
+	if err != nil {
+		return "", err
+	}
+	return b.status, nil
+}

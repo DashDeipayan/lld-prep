@@ -1,0 +1,131 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+)
+
+var (
+	ErrTopicExists   = errors.New("topic exists")
+	ErrUnknownTopic  = errors.New("unknown topic")
+	ErrUnknownGroup  = errors.New("unknown group")
+	ErrInvalidOffset = errors.New("invalid offset")
+)
+
+type Message struct {
+	Offset  int64
+	Payload string
+}
+
+type topic struct {
+	mu      sync.Mutex // one lock per topic
+	log     []string
+	offsets map[string]int64
+}
+
+type Broker struct {
+	mu     sync.RWMutex
+	topics map[string]*topic
+}
+
+func NewBroker() *Broker { return &Broker{topics: map[string]*topic{}} }
+
+func (b *Broker) CreateTopic(t string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.topics[t]; ok {
+		return fmt.Errorf("%w: %s", ErrTopicExists, t)
+	}
+	b.topics[t] = &topic{offsets: map[string]int64{}}
+	return nil
+}
+
+func (b *Broker) topic(t string) (*topic, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	tp, ok := b.topics[t]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrUnknownTopic, t)
+	}
+	return tp, nil
+}
+
+func (b *Broker) Publish(t, payload string) (int64, error) {
+	tp, err := b.topic(t)
+	if err != nil {
+		return -1, err
+	}
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	tp.log = append(tp.log, payload)
+	return int64(len(tp.log) - 1), nil
+}
+
+func (b *Broker) Subscribe(t, group string, fromBeginning bool) error {
+	tp, err := b.topic(t)
+	if err != nil {
+		return err
+	}
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	if _, ok := tp.offsets[group]; !ok {
+		start := int64(len(tp.log))
+		if fromBeginning {
+			start = 0
+		}
+		tp.offsets[group] = start
+	}
+	return nil
+}
+
+func (b *Broker) Poll(t, group string, limit int) ([]Message, error) {
+	tp, err := b.topic(t)
+	if err != nil {
+		return nil, err
+	}
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	from, ok := tp.offsets[group]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrUnknownGroup, group)
+	}
+	to := min(int64(len(tp.log)), from+int64(max(0, limit)))
+	out := make([]Message, 0, to-from)
+	for i := from; i < to; i++ {
+		out = append(out, Message{i, tp.log[i]})
+	}
+	tp.offsets[group] = to
+	return out, nil
+}
+
+func (b *Broker) Seek(t, group string, offset int64) error {
+	tp, err := b.topic(t)
+	if err != nil {
+		return err
+	}
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	if _, ok := tp.offsets[group]; !ok {
+		return fmt.Errorf("%w: %s", ErrUnknownGroup, group)
+	}
+	if offset < 0 || offset > int64(len(tp.log)) {
+		return fmt.Errorf("%w: %d", ErrInvalidOffset, offset)
+	}
+	tp.offsets[group] = offset
+	return nil
+}
+
+func (b *Broker) Lag(t, group string) (int64, error) {
+	tp, err := b.topic(t)
+	if err != nil {
+		return 0, err
+	}
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	off, ok := tp.offsets[group]
+	if !ok {
+		return 0, fmt.Errorf("%w: %s", ErrUnknownGroup, group)
+	}
+	return int64(len(tp.log)) - off, nil
+}

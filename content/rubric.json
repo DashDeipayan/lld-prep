@@ -1,0 +1,44 @@
+[
+  {
+    "id": "requirements",
+    "title": "Requirements & scoping",
+    "weight": 15,
+    "strong": "Asked 4–6 targeted questions, listed functional + non-functional requirements, explicitly cut scope, all in ≤ 8 min.",
+    "weak": "Started coding immediately, or spent 15+ minutes asking questions without converging."
+  },
+  {
+    "id": "modeling",
+    "title": "Entities & relationships",
+    "weight": 20,
+    "strong": "Right nouns became classes, responsibilities are crisp, composition used over inheritance where it fits, relationships (1–N, has-a) are correct.",
+    "weak": "God class, anemic data bags with logic elsewhere, or inheritance trees that would break on the next requirement."
+  },
+  {
+    "id": "patterns",
+    "title": "Patterns & SOLID applied with reason",
+    "weight": 15,
+    "strong": "Used 1–3 patterns where variation actually exists (Strategy for pricing, State for lifecycle…) and could say why.",
+    "weak": "No abstraction at the points of change, or pattern-stuffing (Singleton + Factory + Visitor for no reason)."
+  },
+  {
+    "id": "code",
+    "title": "Working, readable code",
+    "weight": 25,
+    "strong": "Core flows compile and work, names are clear, methods are short, no dead code, sensible packages/types. Hidden tests mostly green.",
+    "weak": "Did not compile or only skeletons, long methods, magic numbers, unclear naming."
+  },
+  {
+    "id": "edge",
+    "title": "Edge cases, errors & concurrency",
+    "weight": 15,
+    "strong": "Validated inputs, defined failure behaviour (exceptions/errors), identified shared state and protected it (locks/atomic/channels) where needed.",
+    "weak": "Happy path only, or a double-booking/race that was never considered."
+  },
+  {
+    "id": "communication",
+    "title": "Communication & extensibility",
+    "weight": 10,
+    "strong": "Narrated trade-offs, managed time, and answered the 'now add X' follow-up by pointing at the exact class to extend.",
+    "weak": "Silent coding, defensive about feedback, or a follow-up required rewriting the core."
+  }
+]

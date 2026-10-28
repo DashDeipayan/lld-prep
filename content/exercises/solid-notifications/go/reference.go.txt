@@ -1,0 +1,80 @@
+package main
+
+import (
+	"errors"
+	"strings"
+)
+
+// ---- Provided ----
+
+type User struct {
+	ID          string
+	Email       string
+	Phone       string
+	DeviceToken string
+	Muted       map[string]bool
+}
+
+type Outbox struct{ Sent []string }
+
+func (o *Outbox) Record(channel, to, msg string) { o.Sent = append(o.Sent, channel+":"+to+":"+msg) }
+
+var ErrEmptyMessage = errors.New("message must not be blank")
+
+type Notifier interface {
+	Channel() string
+	CanReach(u User) bool
+	Send(u User, msg string) error
+}
+
+// outboxNotifier is one small type parameterised by channel name and an
+// address getter: in Go, data beats a class hierarchy here.
+type outboxNotifier struct {
+	channel string
+	address func(User) string
+	outbox  *Outbox
+}
+
+func (n outboxNotifier) Channel() string      { return n.channel }
+func (n outboxNotifier) CanReach(u User) bool { return strings.TrimSpace(n.address(u)) != "" }
+func (n outboxNotifier) Send(u User, msg string) error {
+	n.outbox.Record(n.channel, n.address(u), msg)
+	return nil
+}
+
+func NewEmailNotifier(o *Outbox) Notifier {
+	return outboxNotifier{"email", func(u User) string { return u.Email }, o}
+}
+
+func NewSmsNotifier(o *Outbox) Notifier {
+	return outboxNotifier{"sms", func(u User) string { return u.Phone }, o}
+}
+
+func NewPushNotifier(o *Outbox) Notifier {
+	return outboxNotifier{"push", func(u User) string { return u.DeviceToken }, o}
+}
+
+type NotificationService struct {
+	notifiers []Notifier
+}
+
+func NewNotificationService(ns ...Notifier) *NotificationService {
+	return &NotificationService{notifiers: append([]Notifier(nil), ns...)}
+}
+
+func (s *NotificationService) Notify(u User, msg string) (int, error) {
+	if strings.TrimSpace(msg) == "" {
+		return 0, ErrEmptyMessage
+	}
+	sent := 0
+	for _, n := range s.notifiers {
+		if u.Muted[n.Channel()] || !n.CanReach(u) {
+			continue
+		}
+		if err := n.Send(u, msg); err != nil {
+			continue // isolate; real code would log and retry / dead-letter
+		}
+		sent++
+	}
+	return sent, nil
+}

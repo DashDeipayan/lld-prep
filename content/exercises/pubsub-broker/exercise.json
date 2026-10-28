@@ -1,0 +1,13 @@
+{
+  "title": "Pub-Sub Broker with Consumer Groups",
+  "difficulty": "medium",
+  "summary": "A Kafka-lite in-memory broker: topics as append-only logs, per-group offsets, poll/seek/lag, and exactly-once delivery within a group under concurrency.",
+  "minutes": 60,
+  "tags": ["pub-sub", "observer", "concurrency", "messaging"],
+  "hints": [
+    "A topic is an append-only `List<String>`. The offset is simply the list index. Publishing returns `size` before the append.",
+    "Each topic keeps a `Map<group, Long>` of committed offsets. Consumers in the same group **share** one offset, which is how a group splits the work.",
+    "`poll` must read the offset, slice the messages and advance the offset **atomically**. Otherwise two consumers in a group get the same messages.",
+    "One lock per topic is a good granularity: publishes to different topics never contend."
+  ]
+}

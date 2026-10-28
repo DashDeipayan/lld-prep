@@ -1,0 +1,94 @@
+{
+  "title": "Day 2 Check: Creational Patterns & Strategy",
+  "summary": "When to reach for Factory, Builder, Singleton and Strategy, and when not to.",
+  "questions": [
+    {
+      "q": "Why is double-checked locking in Java broken without `volatile` on the instance field?",
+      "options": [
+        "`synchronized` doesn't work on static methods",
+        "Without a happens-before edge, another thread can see a non-null reference to a partially constructed object",
+        "The JVM forbids lazy initialisation",
+        "Two locks get created"
+      ],
+      "answer": 1,
+      "explain": "The write of the reference can be reordered before the constructor's writes. `volatile` (or the holder idiom) gives safe publication."
+    },
+    {
+      "q": "The interviewer asks: \"There's only one ParkingLot, so should it be a Singleton?\" Best answer?",
+      "options": [
+        "Yes, always. That's what Singleton is for",
+        "No. I'd create one instance in `main` and inject it. A Singleton is hidden global state that makes testing and multi-lot support harder. I can show the thread-safe version if you want the pattern",
+        "No. Use a static class with static methods instead",
+        "Yes, but with `enum`"
+      ],
+      "answer": 1,
+      "explain": "\"Only one\" is a wiring decision. Show you know the pattern and its costs."
+    },
+    {
+      "q": "You need to support card, UPI and wallet now, with more methods added by other teams later. Which design scores best?",
+      "options": [
+        "A `switch` on the method string inside `CheckoutService`",
+        "An abstract factory for payment families",
+        "A registry factory: `Map<method, constructor>` filled at startup, returning a `PaymentProcessor` interface",
+        "One class per method, each a Singleton"
+      ],
+      "answer": 2,
+      "explain": "A registry lets new methods plug in without editing existing code (Open/Closed), and callers depend only on the interface."
+    },
+    {
+      "q": "An object has 2 required and 7 optional fields and must be immutable. The idiomatic choice in Go is…",
+      "options": [
+        "A constructor with 9 parameters",
+        "Exported fields that callers set after construction",
+        "Functional options: `New(required..., opts ...Option)`",
+        "A Builder struct with setter methods that return errors"
+      ],
+      "answer": 2,
+      "explain": "Functional options are the Go equivalent of Builder (`grpc.Dial`, many std/x libraries). They keep defaults in one place and are easy to extend."
+    },
+    {
+      "q": "Which signal in a problem statement most strongly suggests **Strategy**?",
+      "options": [
+        "\"There must be exactly one instance\"",
+        "\"Users can undo the last action\"",
+        "\"Pricing may be hourly, flat or surge-based, and we'll add more models\"",
+        "\"Notify all subscribers when the price changes\""
+      ],
+      "answer": 2,
+      "explain": "Interchangeable algorithms behind one interface is Strategy. Undo is Command, notify-all is Observer, exactly-one is Singleton."
+    },
+    {
+      "q": "What's the key difference between Strategy and State?",
+      "options": [
+        "There's none. They're the same pattern",
+        "With Strategy the client picks the algorithm. With State the object swaps its own behaviour object as its internal state changes",
+        "State uses inheritance, Strategy uses static methods",
+        "Strategy is only for sorting"
+      ],
+      "answer": 1,
+      "explain": "Their structure is similar. The intent and who triggers the change differ."
+    },
+    {
+      "q": "In the discounts exercise, `Checkout` received a `List<DiscountStrategy>`. Adding a new 'first-order 15% off' promotion requires…",
+      "options": [
+        "Editing `Checkout.total`",
+        "Adding a new strategy class and passing it in. `Checkout` doesn't change",
+        "Adding a new enum value and a switch case",
+        "Subclassing `Checkout`"
+      ],
+      "answer": 1,
+      "explain": "That's the whole point. The extension is a new class, and the context stays closed for modification."
+    },
+    {
+      "q": "Why should a Builder copy collections in the built object's constructor (e.g. `Map.copyOf`)?",
+      "options": [
+        "For performance",
+        "So that later changes to the builder, or to the caller's map, can't change an object that's supposed to be immutable",
+        "Because Java requires it",
+        "To sort the keys"
+      ],
+      "answer": 1,
+      "explain": "Immutability needs defensive copies on the way in and unmodifiable views (or copies) on the way out."
+    }
+  ]
+}

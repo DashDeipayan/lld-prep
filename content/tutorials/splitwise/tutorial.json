@@ -1,0 +1,12 @@
+{
+  "title": "Build Splitwise from Scratch",
+  "summary": "Expense sharing in 5 tested steps: split strategies with exact rounding, expenses, pairwise netting, settle-up, and greedy debt simplification.",
+  "minutes": 150,
+  "steps": [
+    { "title": "Split strategies (Strategy + exact rounding)", "doc": "steps/1.md" },
+    { "title": "Users and expenses", "doc": "steps/2.md" },
+    { "title": "Netting and balances", "doc": "steps/3.md" },
+    { "title": "Settle up", "doc": "steps/4.md" },
+    { "title": "Simplify debts", "doc": "steps/5.md" }
+  ]
+}

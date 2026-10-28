@@ -1,0 +1,107 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrOutOfRange = errors.New("position out of range")
+
+type Command interface {
+	Execute()
+	Undo()
+}
+
+// document is the receiver.
+type document struct{ text []byte }
+
+func (d *document) insert(pos int, s string) {
+	d.text = append(d.text[:pos], append([]byte(s), d.text[pos:]...)...)
+}
+
+func (d *document) delete(from, to int) string {
+	removed := string(d.text[from:to])
+	d.text = append(d.text[:from], d.text[to:]...)
+	return removed
+}
+
+type insertCmd struct {
+	doc  *document
+	pos  int
+	text string
+}
+
+func (c *insertCmd) Execute() { c.doc.insert(c.pos, c.text) }
+func (c *insertCmd) Undo()    { c.doc.delete(c.pos, c.pos+len(c.text)) }
+
+type deleteCmd struct {
+	doc      *document
+	from, to int
+	removed  string
+}
+
+func (c *deleteCmd) Execute() { c.removed = c.doc.delete(c.from, c.to) }
+func (c *deleteCmd) Undo()    { c.doc.insert(c.from, c.removed) }
+
+type TextEditor struct {
+	doc        document
+	undo, redo []Command
+	maxHistory int
+}
+
+func NewTextEditor(maxHistory int) *TextEditor { return &TextEditor{maxHistory: maxHistory} }
+
+func (e *TextEditor) Text() string { return string(e.doc.text) }
+
+func (e *TextEditor) Insert(pos int, s string) error {
+	if pos < 0 || pos > len(e.doc.text) {
+		return fmt.Errorf("%w: insert at %d", ErrOutOfRange, pos)
+	}
+	if s == "" {
+		return nil
+	}
+	e.run(&insertCmd{doc: &e.doc, pos: pos, text: s})
+	return nil
+}
+
+func (e *TextEditor) Delete(from, to int) error {
+	if from < 0 || to > len(e.doc.text) || from > to {
+		return fmt.Errorf("%w: delete [%d,%d)", ErrOutOfRange, from, to)
+	}
+	if from == to {
+		return nil
+	}
+	e.run(&deleteCmd{doc: &e.doc, from: from, to: to})
+	return nil
+}
+
+func (e *TextEditor) run(c Command) {
+	c.Execute()
+	e.undo = append(e.undo, c)
+	e.redo = nil
+	if over := len(e.undo) - e.maxHistory; over > 0 {
+		e.undo = e.undo[over:] // drop the oldest
+	}
+}
+
+func (e *TextEditor) Undo() bool {
+	if len(e.undo) == 0 {
+		return false
+	}
+	c := e.undo[len(e.undo)-1]
+	e.undo = e.undo[:len(e.undo)-1]
+	c.Undo()
+	e.redo = append(e.redo, c)
+	return true
+}
+
+func (e *TextEditor) Redo() bool {
+	if len(e.redo) == 0 {
+		return false
+	}
+	c := e.redo[len(e.redo)-1]
+	e.redo = e.redo[:len(e.redo)-1]
+	c.Execute()
+	e.undo = append(e.undo, c)
+	return true
+}

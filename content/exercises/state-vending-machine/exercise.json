@@ -1,0 +1,14 @@
+{
+  "title": "Vending Machine (State)",
+  "difficulty": "medium",
+  "summary": "The classic: coins, selection, change, sold-out. Model the machine as explicit states with legal and illegal transitions.",
+  "minutes": 60,
+  "tags": ["state", "classic-problem", "state-machine"],
+  "hints": [
+    "Draw the diagram first: SOLD_OUT → (stock) → IDLE → (coin) → HAS_MONEY → (select ok) → IDLE or SOLD_OUT.",
+    "Put `insertCoin/select/cancel/stock` on a `State` interface, with one class per state. The machine delegates to `state` and exposes package-private helpers for the states to use.",
+    "Validate the coin denomination before delegating. It's invalid in every state.",
+    "After a successful sale, go to SOLD_OUT if the **total** remaining stock is 0, otherwise IDLE.",
+    "A failed `select` (unknown, out of stock, not enough money) keeps the machine in HAS_MONEY with the balance untouched."
+  ]
+}

@@ -1,0 +1,22 @@
+package main
+
+import (
+	"fmt"
+	"runtime/debug"
+	"strings"
+	"testing"
+)
+
+// guard turns a panic inside a test into a normal failure so that the rest
+// of the suite still runs. Every test starts with `defer guard(t)`.
+func guard(t *testing.T) {
+	if r := recover(); r != nil {
+		stack := strings.Split(string(debug.Stack()), "\n")
+		if len(stack) > 14 {
+			stack = stack[:14]
+		}
+		t.Fatalf("panic: %v\n%s", r, strings.Join(stack, "\n"))
+	}
+}
+
+var _ = fmt.Sprint

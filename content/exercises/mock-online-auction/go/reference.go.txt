@@ -1,0 +1,183 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+)
+
+type AuctionListener interface {
+	OnEvent(auctionID, event string)
+}
+
+type ListenerFunc func(auctionID, event string)
+
+func (f ListenerFunc) OnEvent(a, e string) { f(a, e) }
+
+type Result struct {
+	AuctionID, Winner string
+	Price             int64
+}
+
+var (
+	ErrInvalid        = errors.New("invalid request")
+	ErrNotFound       = errors.New("not found")
+	ErrClosed         = errors.New("auction closed")
+	ErrAlreadyLeading = errors.New("already leading")
+	ErrBidTooLow      = errors.New("bid too low")
+	ErrNotEnded       = errors.New("auction still running")
+)
+
+const snipeWindow = 60 * time.Second
+
+type auction struct {
+	mu                       sync.Mutex // one lock per auction
+	id, seller, item         string
+	startPrice, minIncrement int64
+	end                      time.Time
+	leader                   string
+	highest                  int64
+	result                   *Result
+	listeners                []AuctionListener
+}
+
+type AuctionHouse struct {
+	mu       sync.Mutex
+	clock    func() time.Time
+	auctions map[string]*auction
+	next     int
+}
+
+func NewAuctionHouse(clock func() time.Time) *AuctionHouse {
+	return &AuctionHouse{clock: clock, auctions: map[string]*auction{}}
+}
+
+func (h *AuctionHouse) get(id string) (*auction, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	a, ok := h.auctions[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: auction %s", ErrNotFound, id)
+	}
+	return a, nil
+}
+
+func (h *AuctionHouse) Create(seller, item string, startingPrice, minIncrement int64, end time.Time) (string, error) {
+	if !end.After(h.clock()) || startingPrice <= 0 || minIncrement <= 0 {
+		return "", ErrInvalid
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.next++
+	a := &auction{id: fmt.Sprintf("A%d", h.next), seller: seller, item: item, startPrice: startingPrice, minIncrement: minIncrement, end: end}
+	h.auctions[a.id] = a
+	return a.id, nil
+}
+
+func (h *AuctionHouse) Subscribe(id string, l AuctionListener) error {
+	a, err := h.get(id)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.listeners = append(a.listeners, l)
+	return nil
+}
+
+func (h *AuctionHouse) PlaceBid(id, bidder string, amount int64) error {
+	a, err := h.get(id)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock() // listeners run under the auction lock to keep per-auction event order
+	now := h.clock()
+	switch {
+	case a.result != nil || !now.Before(a.end):
+		return ErrClosed
+	case bidder == a.seller:
+		return fmt.Errorf("%w: seller cannot bid", ErrInvalid)
+	case bidder == a.leader:
+		return ErrAlreadyLeading
+	}
+	min := a.startPrice
+	if a.leader != "" {
+		min = a.highest + a.minIncrement
+	}
+	if amount < min {
+		return ErrBidTooLow
+	}
+	prev := a.leader
+	a.leader, a.highest = bidder, amount
+	if a.end.Sub(now) < snipeWindow {
+		a.end = now.Add(snipeWindow)
+	}
+	events := []string{fmt.Sprintf("BID:%s:%d", bidder, amount)}
+	if prev != "" {
+		events = append(events, "OUTBID:"+prev)
+	}
+	for _, e := range events {
+		for _, l := range a.listeners {
+			l.OnEvent(a.id, e)
+		}
+	}
+	return nil
+}
+
+func (h *AuctionHouse) Leader(id string) (string, bool) {
+	a, err := h.get(id)
+	if err != nil {
+		return "", false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.leader, a.leader != ""
+}
+
+func (h *AuctionHouse) Highest(id string) int64 {
+	a, err := h.get(id)
+	if err != nil {
+		return 0
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.highest
+}
+
+func (h *AuctionHouse) EndTime(id string) time.Time {
+	a, err := h.get(id)
+	if err != nil {
+		return time.Time{}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.end
+}
+
+func (h *AuctionHouse) Close(id string) (Result, error) {
+	a, err := h.get(id)
+	if err != nil {
+		return Result{}, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.result != nil {
+		return *a.result, nil // idempotent
+	}
+	if h.clock().Before(a.end) {
+		return Result{}, ErrNotEnded
+	}
+	r := Result{AuctionID: a.id, Winner: a.leader}
+	ev := "CLOSED:UNSOLD"
+	if a.leader != "" {
+		r.Price = a.highest
+		ev = fmt.Sprintf("CLOSED:%s:%d", a.leader, a.highest)
+	}
+	a.result = &r
+	for _, l := range a.listeners {
+		l.OnEvent(a.id, ev)
+	}
+	return r, nil
+}

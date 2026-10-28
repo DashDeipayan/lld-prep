@@ -1,0 +1,34 @@
+package main
+
+import (
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+var (
+	instance *IDGenerator
+	once     sync.Once
+)
+
+type IDGenerator struct {
+	counter atomic.Int64
+}
+
+func newIDGenerator() *IDGenerator {
+	time.Sleep(20 * time.Millisecond)
+	return &IDGenerator{}
+}
+
+// GetIDGenerator lazily creates the instance exactly once, even under concurrent calls.
+func GetIDGenerator() *IDGenerator {
+	once.Do(func() { instance = newIDGenerator() })
+	return instance
+}
+
+func (g *IDGenerator) NextID() int64 { return g.counter.Add(1) }
+
+func (g *IDGenerator) NextIDWithPrefix(prefix string) string {
+	return fmt.Sprintf("%s-%06d", prefix, g.NextID())
+}

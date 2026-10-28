@@ -1,0 +1,138 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+var (
+	ErrInvalidBoard     = errors.New("invalid board")
+	ErrNotEnoughPlayers = errors.New("need at least 2 players")
+	ErrGameOver         = errors.New("game over")
+)
+
+type Dice interface {
+	Roll() int
+}
+
+type DiceFunc func() int
+
+func (f DiceFunc) Roll() int { return f() }
+
+type TurnResult struct {
+	Player   string
+	Roll     int
+	From, To int
+	Won      bool
+}
+
+type Board struct {
+	size  int
+	jumps map[int]int
+}
+
+func NewBoard(size int, snakes, ladders map[int]int) (*Board, error) {
+	if size < 2 {
+		return nil, fmt.Errorf("%w: size %d", ErrInvalidBoard, size)
+	}
+	b := &Board{size: size, jumps: map[int]int{}}
+	add := func(from, to int, ok bool, kind string) error {
+		if !ok {
+			return fmt.Errorf("%w: %s %d->%d goes the wrong way", ErrInvalidBoard, kind, from, to)
+		}
+		if from < 1 || from >= size || to < 1 || to > size {
+			return fmt.Errorf("%w: %s out of range", ErrInvalidBoard, kind)
+		}
+		if _, dup := b.jumps[from]; dup {
+			return fmt.Errorf("%w: two jumps start at %d", ErrInvalidBoard, from)
+		}
+		b.jumps[from] = to
+		return nil
+	}
+	for h, t := range snakes {
+		if err := add(h, t, h > t, "snake"); err != nil {
+			return nil, err
+		}
+	}
+	for lo, hi := range ladders {
+		if err := add(lo, hi, lo < hi, "ladder"); err != nil {
+			return nil, err
+		}
+	}
+	for _, end := range b.jumps {
+		if _, chained := b.jumps[end]; chained {
+			return nil, fmt.Errorf("%w: jump ends on another jump at %d", ErrInvalidBoard, end)
+		}
+	}
+	return b, nil
+}
+
+func (b *Board) resolve(cell int) int {
+	if to, ok := b.jumps[cell]; ok {
+		return to
+	}
+	return cell
+}
+
+type Game struct {
+	board     *Board
+	players   []string
+	dice      Dice
+	pos       map[string]int
+	current   int
+	sixes     int
+	turnStart int
+	winner    string
+}
+
+func NewGame(b *Board, players []string, d Dice) (*Game, error) {
+	if len(players) < 2 {
+		return nil, ErrNotEnoughPlayers
+	}
+	g := &Game{board: b, players: append([]string(nil), players...), dice: d, pos: map[string]int{}}
+	for _, p := range players {
+		g.pos[p] = 0
+	}
+	return g, nil
+}
+
+func (g *Game) PlayTurn() (TurnResult, error) {
+	if g.winner != "" {
+		return TurnResult{}, ErrGameOver
+	}
+	p := g.players[g.current]
+	from := g.pos[p]
+	if g.sixes == 0 {
+		g.turnStart = from
+	}
+	roll := g.dice.Roll()
+	if roll == 6 {
+		g.sixes++
+		if g.sixes == 3 { // penalty: undo the whole turn
+			g.pos[p] = g.turnStart
+			g.passTurn()
+			return TurnResult{p, roll, from, g.turnStart, false}, nil
+		}
+	}
+	to := from
+	if from+roll <= g.board.size {
+		to = g.board.resolve(from + roll)
+	}
+	g.pos[p] = to
+	if to == g.board.size {
+		g.winner = p
+		return TurnResult{p, roll, from, to, true}, nil
+	}
+	if roll != 6 {
+		g.passTurn()
+	}
+	return TurnResult{p, roll, from, to, false}, nil
+}
+
+func (g *Game) passTurn() {
+	g.current = (g.current + 1) % len(g.players)
+	g.sixes = 0
+}
+
+func (g *Game) Position(p string) int  { return g.pos[p] }
+func (g *Game) Winner() (string, bool) { return g.winner, g.winner != "" }

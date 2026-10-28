@@ -1,0 +1,269 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+)
+
+// ======================= Provided =======================
+
+var (
+	ErrNotFound        = errors.New("not found")
+	ErrDuplicate       = errors.New("duplicate")
+	ErrLimitReached    = errors.New("loan limit reached")
+	ErrNoCopyAvailable = errors.New("no copy available")
+	ErrNotOnLoan       = errors.New("copy is not on loan")
+	ErrCopyAvailable   = errors.New("a copy is available; borrow it instead")
+	ErrAlreadyReserved = errors.New("already reserved")
+)
+
+type FinePolicy interface {
+	Fine(daysLate int) int64
+}
+
+type Notifier interface {
+	Notify(memberID, msg string)
+}
+
+type NotifierFunc func(memberID, msg string)
+
+func (f NotifierFunc) Notify(m, s string) { f(m, s) }
+
+type Loan struct {
+	ID, Barcode, ISBN, MemberID string
+	DueDay                      int
+}
+
+// ======================= Model =======================
+
+type perDayFine struct{ perDay, cap int64 }
+
+func NewPerDayFine(perDay, cap int64) FinePolicy { return perDayFine{perDay, cap} }
+
+func (p perDayFine) Fine(daysLate int) int64 { return min(p.cap, int64(max(0, daysLate))*p.perDay) }
+
+type book struct{ isbn, title, author string }
+
+type copyStatus int
+
+const (
+	available copyStatus = iota
+	onLoan
+	heldCopy
+)
+
+type bookCopy struct {
+	barcode, isbn string
+	status        copyStatus
+	heldFor       string
+	heldUntil     int
+}
+
+func (c *bookCopy) availableTo(member string, today int) bool {
+	switch c.status {
+	case available:
+		return true
+	case heldCopy:
+		return today > c.heldUntil || c.heldFor == member
+	}
+	return false
+}
+
+type member struct {
+	id       string
+	maxLoans int
+}
+
+const loanDays, holdDays = 14, 2
+
+// ======================= Service =======================
+
+type Library struct {
+	mu           sync.Mutex
+	fines        FinePolicy
+	today        func() int
+	notifier     Notifier
+	books        map[string]*book
+	copiesByISBN map[string][]*bookCopy // sorted by barcode
+	copies       map[string]*bookCopy
+	members      map[string]*member
+	loans        map[string]Loan // by barcode
+	reservations map[string][]string
+	next         int
+}
+
+func NewLibrary(f FinePolicy, today func() int, n Notifier) *Library {
+	return &Library{fines: f, today: today, notifier: n, books: map[string]*book{}, copiesByISBN: map[string][]*bookCopy{},
+		copies: map[string]*bookCopy{}, members: map[string]*member{}, loans: map[string]Loan{}, reservations: map[string][]string{}}
+}
+
+func (l *Library) AddBook(isbn, title, author string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.books[isbn]; ok {
+		return fmt.Errorf("%w: isbn %s", ErrDuplicate, isbn)
+	}
+	l.books[isbn] = &book{isbn, title, author}
+	return nil
+}
+
+func (l *Library) AddCopy(isbn, barcode string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.books[isbn]; !ok {
+		return fmt.Errorf("%w: isbn %s", ErrNotFound, isbn)
+	}
+	if _, ok := l.copies[barcode]; ok {
+		return fmt.Errorf("%w: barcode %s", ErrDuplicate, barcode)
+	}
+	c := &bookCopy{barcode: barcode, isbn: isbn}
+	l.copies[barcode] = c
+	cs := append(l.copiesByISBN[isbn], c)
+	sort.Slice(cs, func(i, j int) bool { return cs[i].barcode < cs[j].barcode })
+	l.copiesByISBN[isbn] = cs
+	return nil
+}
+
+func (l *Library) AddMember(id string, maxLoans int) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.members[id]; ok {
+		return fmt.Errorf("%w: member %s", ErrDuplicate, id)
+	}
+	l.members[id] = &member{id, maxLoans}
+	return nil
+}
+
+func (l *Library) Borrow(memberID, isbn string) (Loan, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	m, ok := l.members[memberID]
+	if !ok {
+		return Loan{}, fmt.Errorf("%w: member %s", ErrNotFound, memberID)
+	}
+	if _, ok := l.books[isbn]; !ok {
+		return Loan{}, fmt.Errorf("%w: isbn %s", ErrNotFound, isbn)
+	}
+	active := 0
+	for _, ln := range l.loans {
+		if ln.MemberID == memberID {
+			active++
+		}
+	}
+	if active >= m.maxLoans {
+		return Loan{}, ErrLimitReached
+	}
+	today := l.today()
+	var chosen *bookCopy
+	for _, c := range l.copiesByISBN[isbn] { // a copy held for this member wins
+		if c.status == heldCopy && c.heldFor == memberID && today <= c.heldUntil {
+			chosen = c
+			break
+		}
+	}
+	if chosen == nil {
+		for _, c := range l.copiesByISBN[isbn] {
+			if c.availableTo(memberID, today) {
+				chosen = c
+				break
+			}
+		}
+	}
+	if chosen == nil {
+		return Loan{}, ErrNoCopyAvailable
+	}
+	chosen.status, chosen.heldFor = onLoan, ""
+	l.next++
+	ln := Loan{ID: fmt.Sprintf("L%d", l.next), Barcode: chosen.barcode, ISBN: isbn, MemberID: memberID, DueDay: today + loanDays}
+	l.loans[chosen.barcode] = ln
+	return ln, nil
+}
+
+func (l *Library) GiveBack(barcode string) (int64, error) {
+	l.mu.Lock()
+	c, ok := l.copies[barcode]
+	if !ok {
+		l.mu.Unlock()
+		return 0, fmt.Errorf("%w: barcode %s", ErrNotFound, barcode)
+	}
+	ln, ok := l.loans[barcode]
+	if !ok {
+		l.mu.Unlock()
+		return 0, ErrNotOnLoan
+	}
+	delete(l.loans, barcode)
+	today := l.today()
+	fine := l.fines.Fine(today - ln.DueDay)
+	var notify string
+	if q := l.reservations[c.isbn]; len(q) > 0 {
+		next := q[0]
+		l.reservations[c.isbn] = q[1:]
+		c.status, c.heldFor, c.heldUntil = heldCopy, next, today+holdDays
+		notify = next
+	} else {
+		c.status = available
+	}
+	l.mu.Unlock()
+	if notify != "" {
+		l.notifier.Notify(notify, c.isbn+" is ready for pickup") // outside the lock
+	}
+	return fine, nil
+}
+
+func (l *Library) Reserve(memberID, isbn string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.members[memberID]; !ok {
+		return fmt.Errorf("%w: member %s", ErrNotFound, memberID)
+	}
+	if _, ok := l.books[isbn]; !ok {
+		return fmt.Errorf("%w: isbn %s", ErrNotFound, isbn)
+	}
+	if l.available(isbn) > 0 {
+		return ErrCopyAvailable
+	}
+	if slices.Contains(l.reservations[isbn], memberID) {
+		return ErrAlreadyReserved
+	}
+	l.reservations[isbn] = append(l.reservations[isbn], memberID)
+	return nil
+}
+
+func (l *Library) available(isbn string) int {
+	today := l.today()
+	n := 0
+	for _, c := range l.copiesByISBN[isbn] {
+		if c.status == available || (c.status == heldCopy && today > c.heldUntil) {
+			n++
+		}
+	}
+	return n
+}
+
+func (l *Library) AvailableCopies(isbn string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.available(isbn)
+}
+
+func (l *Library) Search(query string) []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	q := strings.ToLower(query)
+	var hits []*book
+	for _, b := range l.books {
+		if strings.Contains(strings.ToLower(b.title), q) || strings.Contains(strings.ToLower(b.author), q) {
+			hits = append(hits, b)
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].title < hits[j].title })
+	out := []string{}
+	for _, b := range hits {
+		out = append(out, b.isbn)
+	}
+	return out
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Mock: Hotel Reservation System",
+  "difficulty": "medium",
+  "summary": "Room-type inventory over date ranges, room assignment, a booking lifecycle (booked → checked in → checked out), extra charges and billing.",
+  "minutes": 60,
+  "tags": ["mock", "booking", "state", "intervals"],
+  "hints": [
+    "A booking holds one concrete room for nights `[checkIn, checkOut)`. A room is free if none of its active bookings overlap.",
+    "Assign the **lowest room number** of the requested type that is free for every night.",
+    "Lifecycle: BOOKED → CHECKED_IN → CHECKED_OUT, and BOOKED → CANCELLED. Use a small transition check.",
+    "Bill = nights × nightly rate + the sum of extra charges added while checked in."
+  ]
+}

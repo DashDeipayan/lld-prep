@@ -1,0 +1,13 @@
+{
+  "title": "Meeting Room Scheduler",
+  "difficulty": "medium",
+  "summary": "Interval conflicts, best-fit room selection, cancellation, free-slot computation and a single-winner booking race. A common Amazon/Microsoft question.",
+  "minutes": 60,
+  "tags": ["scheduling", "intervals", "strategy", "concurrency"],
+  "hints": [
+    "Half-open intervals `[start, end)`: two bookings conflict iff `s1 < e2 && s2 < e1`.",
+    "Per room, keep bookings sorted by start (a `TreeMap<start, Booking>` or a sorted slice). Then a conflict check only needs the neighbours.",
+    "Best fit: filter rooms with `capacity ≥ attendees` and no conflict, then pick the min by `(capacity, id)`.",
+    "Free slots: walk the sorted bookings inside `[from, to)` and emit the gaps."
+  ]
+}

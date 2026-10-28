@@ -1,0 +1,106 @@
+package main
+
+import (
+	"errors"
+	"sync"
+)
+
+var ErrNoTransaction = errors.New("no transaction")
+
+// prev is the value a key had before a block first touched it.
+type prev struct {
+	value   string
+	present bool
+}
+
+type KVStore struct {
+	mu     sync.Mutex
+	data   map[string]string
+	counts map[string]int
+	undo   []map[string]prev // one undo log per open block
+}
+
+func NewKVStore() *KVStore { return &KVStore{data: map[string]string{}, counts: map[string]int{}} }
+
+// put is the single place that keeps data and counts consistent.
+func (s *KVStore) put(key string, value string, present bool) {
+	if old, ok := s.data[key]; ok {
+		if s.counts[old]--; s.counts[old] == 0 {
+			delete(s.counts, old)
+		}
+	}
+	if present {
+		s.data[key] = value
+		s.counts[value]++
+	} else {
+		delete(s.data, key)
+	}
+}
+
+func (s *KVStore) write(key, value string, present bool) {
+	if n := len(s.undo); n > 0 {
+		log := s.undo[n-1]
+		if _, seen := log[key]; !seen {
+			old, ok := s.data[key]
+			log[key] = prev{old, ok}
+		}
+	}
+	s.put(key, value, present)
+}
+
+func (s *KVStore) Set(key, value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.write(key, value, true)
+}
+
+func (s *KVStore) Get(key string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.data[key]
+	return v, ok
+}
+
+func (s *KVStore) Delete(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.data[key]; ok {
+		s.write(key, "", false)
+	}
+}
+
+func (s *KVStore) Count(value string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.counts[value]
+}
+
+func (s *KVStore) Begin() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.undo = append(s.undo, map[string]prev{})
+}
+
+func (s *KVStore) Rollback() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := len(s.undo)
+	if n == 0 {
+		return ErrNoTransaction
+	}
+	for k, p := range s.undo[n-1] {
+		s.put(k, p.value, p.present)
+	}
+	s.undo = s.undo[:n-1]
+	return nil
+}
+
+func (s *KVStore) Commit() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.undo) == 0 {
+		return ErrNoTransaction
+	}
+	s.undo = nil // changes already live in data
+	return nil
+}

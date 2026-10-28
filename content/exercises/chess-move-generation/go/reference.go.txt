@@ -1,0 +1,221 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+)
+
+type Color int
+
+const (
+	White Color = iota
+	Black
+)
+
+type Kind int
+
+const (
+	King Kind = iota
+	Queen
+	Rook
+	Bishop
+	Knight
+	Pawn
+)
+
+var (
+	ErrIllegalMove   = errors.New("illegal move")
+	ErrWrongTurn     = errors.New("wrong turn")
+	ErrInvalidSquare = errors.New("invalid square")
+)
+
+type Square struct{ File, Rank int }
+
+func ParseSquare(s string) (Square, error) {
+	if len(s) != 2 || s[0] < 'a' || s[0] > 'h' || s[1] < '1' || s[1] > '8' {
+		return Square{}, fmt.Errorf("%w: %q", ErrInvalidSquare, s)
+	}
+	return Square{int(s[0] - 'a'), int(s[1] - '1')}, nil
+}
+
+func (s Square) Offset(df, dr int) (Square, bool) {
+	n := Square{s.File + df, s.Rank + dr}
+	return n, n.File >= 0 && n.File < 8 && n.Rank >= 0 && n.Rank < 8
+}
+
+func (s Square) String() string { return string([]byte{byte('a' + s.File), byte('1' + s.Rank)}) }
+
+type Piece interface {
+	Color() Color
+	Kind() Kind
+	CandidateMoves(b *Board, from Square) []Square
+}
+
+var (
+	straight = [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+	diagonal = [][2]int{{1, 1}, {1, -1}, {-1, 1}, {-1, -1}}
+	all      = append(append([][2]int{}, straight...), diagonal...)
+	jumps    = [][2]int{{1, 2}, {2, 1}, {2, -1}, {1, -2}, {-1, -2}, {-2, -1}, {-2, 1}, {-1, 2}}
+)
+
+// stepper covers king, queen, rook, bishop and knight: directions + range.
+type stepper struct {
+	color Color
+	kind  Kind
+	dirs  [][2]int
+	rng   int
+}
+
+func (p stepper) Color() Color { return p.color }
+func (p stepper) Kind() Kind   { return p.kind }
+
+func (p stepper) CandidateMoves(b *Board, from Square) []Square {
+	var out []Square
+	for _, d := range p.dirs {
+		s := from
+		for i := 0; i < p.rng; i++ {
+			var ok bool
+			if s, ok = s.Offset(d[0], d[1]); !ok {
+				break
+			}
+			q := b.at(s)
+			if q == nil {
+				out = append(out, s)
+				continue
+			}
+			if q.Color() != p.color {
+				out = append(out, s)
+			}
+			break
+		}
+	}
+	return out
+}
+
+type pawn struct{ color Color }
+
+func (p pawn) Color() Color { return p.color }
+func (p pawn) Kind() Kind   { return Pawn }
+
+func (p pawn) CandidateMoves(b *Board, from Square) []Square {
+	dir, start := 1, 1
+	if p.color == Black {
+		dir, start = -1, 6
+	}
+	var out []Square
+	if one, ok := from.Offset(0, dir); ok && b.at(one) == nil {
+		out = append(out, one)
+		if two, ok := one.Offset(0, dir); ok && from.Rank == start && b.at(two) == nil {
+			out = append(out, two)
+		}
+	}
+	for _, df := range []int{-1, 1} {
+		if c, ok := from.Offset(df, dir); ok {
+			if q := b.at(c); q != nil && q.Color() != p.color {
+				out = append(out, c)
+			}
+		}
+	}
+	return out
+}
+
+func newPiece(c Color, k Kind) Piece {
+	switch k {
+	case King:
+		return stepper{c, k, all, 1}
+	case Queen:
+		return stepper{c, k, all, 7}
+	case Rook:
+		return stepper{c, k, straight, 7}
+	case Bishop:
+		return stepper{c, k, diagonal, 7}
+	case Knight:
+		return stepper{c, k, jumps, 1}
+	default:
+		return pawn{c}
+	}
+}
+
+type Board struct {
+	grid [8][8]Piece
+	turn Color
+}
+
+func NewEmptyBoard() *Board { return &Board{} }
+
+func NewStandardBoard() *Board {
+	b := &Board{}
+	back := []Kind{Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook}
+	for f := 0; f < 8; f++ {
+		b.grid[f][0] = newPiece(White, back[f])
+		b.grid[f][1] = newPiece(White, Pawn)
+		b.grid[f][6] = newPiece(Black, Pawn)
+		b.grid[f][7] = newPiece(Black, back[f])
+	}
+	return b
+}
+
+func (b *Board) at(s Square) Piece { return b.grid[s.File][s.Rank] }
+
+func (b *Board) Place(sq string, c Color, k Kind) error {
+	s, err := ParseSquare(sq)
+	if err != nil {
+		return err
+	}
+	b.grid[s.File][s.Rank] = newPiece(c, k)
+	return nil
+}
+
+func (b *Board) PieceAt(sq string) string {
+	s, err := ParseSquare(sq)
+	if err != nil {
+		return ""
+	}
+	p := b.at(s)
+	if p == nil {
+		return "."
+	}
+	return string("wb"[p.Color()]) + string("KQRBNP"[p.Kind()])
+}
+
+func (b *Board) MovesFrom(sq string) ([]string, error) {
+	s, err := ParseSquare(sq)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	if p := b.at(s); p != nil {
+		for _, t := range p.CandidateMoves(b, s) {
+			out = append(out, t.String())
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+func (b *Board) Move(from, to string) error {
+	f, err := ParseSquare(from)
+	if err != nil {
+		return err
+	}
+	t, err := ParseSquare(to)
+	if err != nil {
+		return err
+	}
+	p := b.at(f)
+	if p == nil {
+		return fmt.Errorf("%w: no piece at %s", ErrIllegalMove, from)
+	}
+	if p.Color() != b.turn {
+		return ErrWrongTurn
+	}
+	if !slices.Contains(p.CandidateMoves(b, f), t) {
+		return fmt.Errorf("%w: %s-%s", ErrIllegalMove, from, to)
+	}
+	b.grid[t.File][t.Rank], b.grid[f.File][f.Rank] = p, nil
+	b.turn = 1 - b.turn
+	return nil
+}
+
+func (b *Board) Turn() Color { return b.turn }

@@ -1,0 +1,13 @@
+{
+  "title": "Closable Bounded Blocking Queue",
+  "difficulty": "medium",
+  "summary": "Producer/consumer from scratch: blocking put/take, timeouts, and a close() that wakes everyone up correctly.",
+  "minutes": 45,
+  "tags": ["concurrency", "producer-consumer", "condition-variables", "channels"],
+  "hints": [
+    "Java: one `ReentrantLock` with two `Condition`s (`notFull`, `notEmpty`). Always wait in a `while` loop that rechecks the condition.",
+    "`close()` sets a flag and calls `signalAll()` on **both** conditions, so every blocked thread wakes up and re-evaluates.",
+    "Timed waits: `cond.awaitNanos(remaining)` returns the time left. Loop until the condition holds or `remaining <= 0`.",
+    "Go: a buffered channel can't safely be closed while producers might still send (that panics). Use a mutex plus a `closed` flag, and wake waiters by closing a `done` channel. Or use `sync.Cond` with a broadcast, plus a timer goroutine for the timeouts."
+  ]
+}

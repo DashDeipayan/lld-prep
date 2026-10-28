@@ -1,0 +1,247 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sync"
+)
+
+// ======================= Provided =======================
+
+type OrderLine struct {
+	SKU string
+	Qty int
+}
+
+type OrderStatus int
+
+const (
+	Created OrderStatus = iota
+	Paid
+	Shipped
+	Delivered
+	Cancelled
+)
+
+type PaymentGateway interface {
+	Charge(orderID string, amount int64) bool
+	Refund(orderID string, amount int64)
+}
+
+var (
+	ErrInvalid           = errors.New("invalid request")
+	ErrNotFound          = errors.New("not found")
+	ErrOutOfStock        = errors.New("out of stock")
+	ErrPaymentFailed     = errors.New("payment failed")
+	ErrIllegalTransition = errors.New("illegal transition")
+)
+
+// ======================= Model =======================
+
+type order struct {
+	id, customer string
+	lines        map[string]int
+	total        int64
+	status       OrderStatus
+}
+
+var allowed = map[OrderStatus][]OrderStatus{
+	Created: {Paid, Cancelled},
+	Paid:    {Shipped, Cancelled},
+	Shipped: {Delivered},
+}
+
+// inventory owns stock; multi-SKU changes are atomic under its lock.
+type inventory struct {
+	mu    sync.Mutex
+	stock map[string]int
+}
+
+func (inv *inventory) reserve(lines map[string]int) error {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	for sku, q := range lines { // validate all
+		if inv.stock[sku] < q {
+			return fmt.Errorf("%w: %s", ErrOutOfStock, sku)
+		}
+	}
+	for sku, q := range lines { // then mutate all
+		inv.stock[sku] -= q
+	}
+	return nil
+}
+
+func (inv *inventory) add(lines map[string]int) {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	for sku, q := range lines {
+		inv.stock[sku] += q
+	}
+}
+
+func (inv *inventory) get(sku string) int {
+	inv.mu.Lock()
+	defer inv.mu.Unlock()
+	return inv.stock[sku]
+}
+
+// ======================= Service =======================
+
+type OrderService struct {
+	mu         sync.Mutex
+	gw         PaymentGateway
+	inv        *inventory
+	prices     map[string]int64
+	orders     map[string]*order
+	byCustomer map[string][]string
+	next       int
+}
+
+func NewOrderService(gw PaymentGateway) *OrderService {
+	return &OrderService{gw: gw, inv: &inventory{stock: map[string]int{}}, prices: map[string]int64{},
+		orders: map[string]*order{}, byCustomer: map[string][]string{}}
+}
+
+func (s *OrderService) AddProduct(sku string, price int64, stock int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, dup := s.prices[sku]; dup || price < 0 || stock < 0 {
+		return fmt.Errorf("%w: product %s", ErrInvalid, sku)
+	}
+	s.prices[sku] = price
+	s.inv.add(map[string]int{sku: stock})
+	return nil
+}
+
+func (s *OrderService) price(sku string) (int64, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.prices[sku]
+	return p, ok
+}
+
+func (s *OrderService) Restock(sku string, qty int) error {
+	if _, ok := s.price(sku); !ok {
+		return fmt.Errorf("%w: %s", ErrNotFound, sku)
+	}
+	if qty <= 0 {
+		return ErrInvalid
+	}
+	s.inv.add(map[string]int{sku: qty})
+	return nil
+}
+
+func (s *OrderService) Stock(sku string) int { return s.inv.get(sku) }
+
+func (s *OrderService) PlaceOrder(customer string, lines []OrderLine) (string, error) {
+	if len(lines) == 0 {
+		return "", fmt.Errorf("%w: empty order", ErrInvalid)
+	}
+	merged := map[string]int{}
+	var total int64
+	for _, l := range lines {
+		p, ok := s.price(l.SKU)
+		if !ok {
+			return "", fmt.Errorf("%w: %s", ErrNotFound, l.SKU)
+		}
+		if l.Qty <= 0 {
+			return "", fmt.Errorf("%w: qty", ErrInvalid)
+		}
+		merged[l.SKU] += l.Qty
+		total += p * int64(l.Qty)
+	}
+	if err := s.inv.reserve(merged); err != nil { // atomic, all-or-nothing
+		return "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.next++
+	o := &order{id: fmt.Sprintf("O%d", s.next), customer: customer, lines: merged, total: total, status: Created}
+	s.orders[o.id] = o
+	s.byCustomer[customer] = append(s.byCustomer[customer], o.id)
+	return o.id, nil
+}
+
+func (s *OrderService) get(id string) (*order, error) {
+	o, ok := s.orders[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: order %s", ErrNotFound, id)
+	}
+	return o, nil
+}
+
+func canMove(o *order, to OrderStatus) error {
+	if !slices.Contains(allowed[o.status], to) {
+		return fmt.Errorf("%w: %d -> %d", ErrIllegalTransition, o.status, to)
+	}
+	return nil
+}
+
+func (s *OrderService) Total(id string) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, err := s.get(id)
+	if err != nil {
+		return 0, err
+	}
+	return o.total, nil
+}
+
+func (s *OrderService) Status(id string) (OrderStatus, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, err := s.get(id)
+	if err != nil {
+		return 0, err
+	}
+	return o.status, nil
+}
+
+func (s *OrderService) Pay(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, err := s.get(id)
+	if err != nil {
+		return err
+	}
+	if err := canMove(o, Paid); err != nil {
+		return err
+	}
+	if !s.gw.Charge(o.id, o.total) {
+		return ErrPaymentFailed
+	}
+	o.status = Paid
+	return nil
+}
+
+func (s *OrderService) move(id string, to OrderStatus) (*order, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o, err := s.get(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := canMove(o, to); err != nil {
+		return nil, err
+	}
+	prev := o.status
+	o.status = to
+	if to == Cancelled {
+		s.inv.add(o.lines)
+		if prev == Paid {
+			s.gw.Refund(o.id, o.total)
+		}
+	}
+	return o, nil
+}
+
+func (s *OrderService) Ship(id string) error    { _, err := s.move(id, Shipped); return err }
+func (s *OrderService) Deliver(id string) error { _, err := s.move(id, Delivered); return err }
+func (s *OrderService) Cancel(id string) error  { _, err := s.move(id, Cancelled); return err }
+
+func (s *OrderService) OrdersOf(customer string) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string{}, s.byCustomer[customer]...)
+}

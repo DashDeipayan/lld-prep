@@ -1,0 +1,13 @@
+{
+  "title": "Tic-Tac-Toe on an N×N Board",
+  "difficulty": "easy",
+  "summary": "Game state, turn order, O(1) win detection with counters, and draw handling. A favourite warm-up at Microsoft and Amazon.",
+  "minutes": 45,
+  "tags": ["game", "classic-problem", "state", "o1-win-check"],
+  "hints": [
+    "Keep counters instead of scanning the board: `rows[n]`, `cols[n]`, `diag` and `anti`. Add +1 for X and −1 for O. A player wins when any counter reaches ±n.",
+    "A move at (r, c) touches `rows[r]`, `cols[c]`, `diag` when `r == c`, and `anti` when `r + c == n - 1`.",
+    "The game status is an enum: `IN_PROGRESS`, `X_WON`, `O_WON` or `DRAW`. No moves are accepted after the game is over.",
+    "Validate in this order: game over, then out of bounds, then cell taken, then wrong player's turn."
+  ]
+}

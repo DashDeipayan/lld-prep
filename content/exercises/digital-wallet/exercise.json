@@ -1,0 +1,13 @@
+{
+  "title": "Digital Wallet: Transfers, Idempotency & No Deadlocks",
+  "difficulty": "hard",
+  "summary": "Accounts, deposits and transfers with insufficient-funds checks, idempotency keys, a transaction history, and lock ordering proven under concurrent opposite-direction transfers.",
+  "minutes": 60,
+  "tags": ["wallet", "fintech", "concurrency", "deadlock", "idempotency"],
+  "hints": [
+    "Give each account its own lock. A transfer locks both accounts in a **global order** (by account id). That's what prevents the A→B / B→A deadlock.",
+    "Idempotency: a `ConcurrentHashMap<key, Result>`. Run the transfer inside `computeIfAbsent` so that concurrent retries with the same key execute exactly once.",
+    "Store failures as results too. A retry of a failed transfer returns the same error without re-executing it.",
+    "History: append a `Txn(id, from, to, amount)` only for successful transfers. Deposits use `from = \"EXTERNAL\"`."
+  ]
+}

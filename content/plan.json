@@ -1,0 +1,436 @@
+{
+  "days": [
+    {
+      "day": 1,
+      "title": "The interview playbook",
+      "goal": "Know exactly how LLD rounds are scored, get a script you'll reuse for every problem, and sharpen OOP/SOLID the way interviewers probe it.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "interview-playbook",
+          "minutes": 50
+        },
+        {
+          "type": "lesson",
+          "id": "oop-solid-for-interviews",
+          "minutes": 50
+        },
+        {
+          "type": "lesson",
+          "id": "uml-in-5-minutes",
+          "minutes": 25
+        },
+        {
+          "type": "exercise",
+          "id": "solid-notifications",
+          "minutes": 45,
+          "note": "Your first coded refactor: interfaces, dependency injection, failure isolation."
+        },
+        {
+          "type": "quiz",
+          "id": "day1-fundamentals",
+          "minutes": 20
+        },
+        {
+          "type": "lesson",
+          "id": "breaking-down-problems",
+          "minutes": 40,
+          "note": "Read now, reread before every problem from Day 6."
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "title": "Strategy & creational patterns",
+      "goal": "Master the most-used pattern (Strategy) and know when Factory, Builder and Singleton help or hurt.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "pattern-strategy",
+          "minutes": 25
+        },
+        {
+          "type": "exercise",
+          "id": "strategy-discounts",
+          "minutes": 30
+        },
+        {
+          "type": "lesson",
+          "id": "patterns-creational",
+          "minutes": 45
+        },
+        {
+          "type": "exercise",
+          "id": "factory-payments",
+          "minutes": 35
+        },
+        {
+          "type": "exercise",
+          "id": "builder-http-request",
+          "minutes": 35
+        },
+        {
+          "type": "exercise",
+          "id": "singleton-id-generator",
+          "minutes": 30
+        },
+        {
+          "type": "quiz",
+          "id": "patterns-creational",
+          "minutes": 15
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "title": "Observer, State & Command",
+      "goal": "Model events, lifecycles and undoable actions. These three behavioural patterns appear in almost every classic problem.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "pattern-observer",
+          "minutes": 25
+        },
+        {
+          "type": "exercise",
+          "id": "observer-stock-alerts",
+          "minutes": 40
+        },
+        {
+          "type": "lesson",
+          "id": "pattern-state",
+          "minutes": 30
+        },
+        {
+          "type": "exercise",
+          "id": "state-vending-machine",
+          "minutes": 60
+        },
+        {
+          "type": "lesson",
+          "id": "pattern-command",
+          "minutes": 25
+        },
+        {
+          "type": "exercise",
+          "id": "command-text-editor",
+          "minutes": 40
+        }
+      ]
+    },
+    {
+      "day": 4,
+      "title": "Structural patterns & chains",
+      "goal": "Wrap, adapt, simplify and nest objects, and build the classic logging framework.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "patterns-structural",
+          "minutes": 45
+        },
+        {
+          "type": "exercise",
+          "id": "decorator-notifiers",
+          "minutes": 40
+        },
+        {
+          "type": "lesson",
+          "id": "patterns-behavioral-more",
+          "minutes": 35
+        },
+        {
+          "type": "exercise",
+          "id": "logging-framework",
+          "minutes": 45
+        },
+        {
+          "type": "exercise",
+          "id": "composite-file-system",
+          "minutes": 45
+        },
+        {
+          "type": "quiz",
+          "id": "pattern-picker",
+          "minutes": 25
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "title": "Concurrency for LLD",
+      "goal": "Spot shared state, never double-book, avoid deadlocks, and build the concurrency classics in Java and Go.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "concurrency-for-lld",
+          "minutes": 55
+        },
+        {
+          "type": "exercise",
+          "id": "bounded-blocking-queue",
+          "minutes": 45
+        },
+        {
+          "type": "exercise",
+          "id": "seat-hold-no-double-booking",
+          "minutes": 50
+        },
+        {
+          "type": "exercise",
+          "id": "lru-cache",
+          "minutes": 50
+        },
+        {
+          "type": "quiz",
+          "id": "concurrency",
+          "minutes": 20
+        }
+      ]
+    },
+    {
+      "day": 6,
+      "title": "Problem day: Parking Lot & Tic-Tac-Toe",
+      "goal": "Build the most-asked LLD problem end to end in six tested steps, then a game with an O(1) twist.",
+      "items": [
+        {
+          "type": "tutorial",
+          "id": "parking-lot",
+          "minutes": 150
+        },
+        {
+          "type": "exercise",
+          "id": "tic-tac-toe",
+          "minutes": 45
+        }
+      ]
+    },
+    {
+      "day": 7,
+      "title": "Games, chess & week-1 review",
+      "goal": "Rule-heavy game design with injected randomness and polymorphic pieces, then consolidate everything from week 1.",
+      "items": [
+        {
+          "type": "exercise",
+          "id": "snake-and-ladder",
+          "minutes": 60
+        },
+        {
+          "type": "lesson",
+          "id": "design-chess",
+          "minutes": 35
+        },
+        {
+          "type": "exercise",
+          "id": "chess-move-generation",
+          "minutes": 75
+        },
+        {
+          "type": "lesson",
+          "id": "revision-week1",
+          "minutes": 30
+        },
+        {
+          "type": "quiz",
+          "id": "classic-problems-1",
+          "minutes": 25
+        }
+      ]
+    },
+    {
+      "day": 8,
+      "title": "Elevators, rate limiters & pub-sub",
+      "goal": "Behaviour over time, algorithm families behind one interface, and messaging. The three systems interviewers use to test depth.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "design-elevator",
+          "minutes": 30
+        },
+        {
+          "type": "exercise",
+          "id": "elevator-system",
+          "minutes": 90
+        },
+        {
+          "type": "exercise",
+          "id": "rate-limiter",
+          "minutes": 50
+        },
+        {
+          "type": "exercise",
+          "id": "pubsub-broker",
+          "minutes": 60
+        }
+      ]
+    },
+    {
+      "day": 9,
+      "title": "Money: Splitwise & wallets",
+      "goal": "Integer money, exact splits, debt simplification, deadlock-free transfers and idempotency.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "money-and-ledgers",
+          "minutes": 30
+        },
+        {
+          "type": "tutorial",
+          "id": "splitwise",
+          "minutes": 140
+        },
+        {
+          "type": "exercise",
+          "id": "digital-wallet",
+          "minutes": 60
+        }
+      ]
+    },
+    {
+      "day": 10,
+      "title": "Booking systems",
+      "goal": "BookMyShow and a library: catalogue vs inventory, holds, payment as a failure point, reservations and notifications.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "design-bookmyshow",
+          "minutes": 35
+        },
+        {
+          "type": "exercise",
+          "id": "movie-booking",
+          "minutes": 90
+        },
+        {
+          "type": "exercise",
+          "id": "library-management",
+          "minutes": 60
+        },
+        {
+          "type": "quiz",
+          "id": "booking-and-money",
+          "minutes": 25
+        }
+      ]
+    },
+    {
+      "day": 11,
+      "title": "Marketplaces: rides, food & storage",
+      "goal": "Three-sided marketplaces reuse what you know. Plus the machine-coding favourite: a transactional KV store.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "design-ride-sharing",
+          "minutes": 35
+        },
+        {
+          "type": "exercise",
+          "id": "ride-sharing",
+          "minutes": 75
+        },
+        {
+          "type": "lesson",
+          "id": "design-food-delivery",
+          "minutes": 30
+        },
+        {
+          "type": "exercise",
+          "id": "kv-store-transactions",
+          "minutes": 60
+        },
+        {
+          "type": "lesson",
+          "id": "revision-week2",
+          "minutes": 25
+        }
+      ]
+    },
+    {
+      "day": 12,
+      "title": "E-commerce, scheduling & follow-ups",
+      "goal": "Two more classic systems, then the follow-up playbook and the mistakes list, so the last 10 minutes of a round go your way.",
+      "items": [
+        {
+          "type": "exercise",
+          "id": "order-inventory",
+          "minutes": 70
+        },
+        {
+          "type": "exercise",
+          "id": "meeting-room-scheduler",
+          "minutes": 55
+        },
+        {
+          "type": "lesson",
+          "id": "extensibility-followups",
+          "minutes": 40
+        },
+        {
+          "type": "lesson",
+          "id": "common-mistakes",
+          "minutes": 20
+        },
+        {
+          "type": "quiz",
+          "id": "classic-problems-2",
+          "minutes": 25
+        }
+      ]
+    },
+    {
+      "day": 13,
+      "title": "Mock day 1",
+      "goal": "Three full timed interviews with honest self-scoring. Treat them like the real thing.",
+      "items": [
+        {
+          "type": "lesson",
+          "id": "mock-strategy",
+          "minutes": 15
+        },
+        {
+          "type": "mock",
+          "id": "car-rental",
+          "minutes": 75,
+          "note": "60 min interview + 15 min debrief and reading the reference."
+        },
+        {
+          "type": "mock",
+          "id": "task-board",
+          "minutes": 75
+        },
+        {
+          "type": "mock",
+          "id": "elevator",
+          "minutes": 75,
+          "note": "Redo under time pressure: the starter is blank again."
+        }
+      ]
+    },
+    {
+      "day": 14,
+      "title": "Mock day 2 & final review",
+      "goal": "Two more mocks, the final exam, and the night-before cheat sheet. Then rest.",
+      "items": [
+        {
+          "type": "mock",
+          "id": "hotel-booking",
+          "minutes": 75
+        },
+        {
+          "type": "mock",
+          "id": "online-auction",
+          "minutes": 75
+        },
+        {
+          "type": "quiz",
+          "id": "final-exam",
+          "minutes": 30
+        },
+        {
+          "type": "lesson",
+          "id": "final-cheatsheet",
+          "minutes": 20
+        }
+      ]
+    }
+  ]
+}

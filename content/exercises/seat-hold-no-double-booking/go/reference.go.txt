@@ -1,0 +1,152 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"sync"
+	"time"
+)
+
+var (
+	ErrSeatUnavailable = errors.New("seat unavailable")
+	ErrUnknownSeat     = errors.New("unknown or invalid seat")
+	ErrHoldNotActive   = errors.New("hold not active")
+)
+
+type seatStatus int
+
+const (
+	available seatStatus = iota
+	held
+	booked
+)
+
+type seat struct {
+	status    seatStatus
+	holdID    string
+	expiresAt time.Time
+}
+
+type hold struct {
+	seats     []string
+	expiresAt time.Time
+	active    bool
+}
+
+type SeatInventory struct {
+	mu     sync.Mutex
+	seats  map[string]*seat
+	order  []string
+	holds  map[string]*hold
+	ttl    time.Duration
+	clock  func() time.Time
+	nextID int
+}
+
+func NewSeatInventory(seatIDs []string, ttl time.Duration, clock func() time.Time) *SeatInventory {
+	s := &SeatInventory{seats: map[string]*seat{}, holds: map[string]*hold{}, ttl: ttl, clock: clock}
+	for _, id := range seatIDs {
+		s.seats[id] = &seat{}
+		s.order = append(s.order, id)
+	}
+	slices.Sort(s.order)
+	return s
+}
+
+func (st *seat) availableAt(now time.Time) bool {
+	return st.status == available || (st.status == held && !now.Before(st.expiresAt))
+}
+
+func (s *SeatInventory) Hold(user string, ids []string) (string, error) {
+	if len(ids) == 0 {
+		return "", fmt.Errorf("%w: empty request", ErrUnknownSeat)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.clock()
+	seen := map[string]bool{}
+	for _, id := range ids { // 1. validate all
+		st, ok := s.seats[id]
+		if !ok || seen[id] {
+			return "", fmt.Errorf("%w: %s", ErrUnknownSeat, id)
+		}
+		seen[id] = true
+		if !st.availableAt(now) {
+			return "", fmt.Errorf("%w: %s", ErrSeatUnavailable, id)
+		}
+	}
+	s.nextID++ // 2. then mutate all
+	hid := fmt.Sprintf("H%d", s.nextID)
+	exp := now.Add(s.ttl)
+	for _, id := range ids {
+		*s.seats[id] = seat{status: held, holdID: hid, expiresAt: exp}
+	}
+	s.holds[hid] = &hold{seats: slices.Clone(ids), expiresAt: exp, active: true}
+	return hid, nil
+}
+
+func (s *SeatInventory) activeHold(id string) (*hold, error) {
+	h, ok := s.holds[id]
+	if !ok || !h.active || !s.clock().Before(h.expiresAt) {
+		return nil, fmt.Errorf("%w: %s", ErrHoldNotActive, id)
+	}
+	return h, nil
+}
+
+func (s *SeatInventory) Confirm(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h, err := s.activeHold(id)
+	if err != nil {
+		return err
+	}
+	for _, sid := range h.seats {
+		s.seats[sid].status = booked
+	}
+	h.active = false
+	return nil
+}
+
+func (s *SeatInventory) Release(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h, err := s.activeHold(id)
+	if err != nil {
+		return err
+	}
+	for _, sid := range h.seats {
+		*s.seats[sid] = seat{}
+	}
+	h.active = false
+	return nil
+}
+
+func (s *SeatInventory) Status(id string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, ok := s.seats[id]
+	switch {
+	case !ok:
+		return ""
+	case st.availableAt(s.clock()):
+		return "AVAILABLE"
+	case st.status == booked:
+		return "BOOKED"
+	default:
+		return "HELD"
+	}
+}
+
+func (s *SeatInventory) Available() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.clock()
+	out := []string{}
+	for _, id := range s.order {
+		if s.seats[id].availableAt(now) {
+			out = append(out, id)
+		}
+	}
+	return out
+}

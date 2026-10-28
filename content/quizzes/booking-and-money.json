@@ -1,0 +1,111 @@
+{
+  "title": "Booking Systems & Money",
+  "summary": "Splitwise, wallets, BookMyShow and libraries: modelling, money correctness and concurrency.",
+  "questions": [
+    {
+      "q": "Splitting ₹100.00 equally among 3 people. Which implementation is correct?",
+      "options": [
+        "`double share = 100.0 / 3` for each person",
+        "Integer paise: 10000 / 3 = 3333 each, plus the remainder (1) to the first person, so the total is exactly 10000",
+        "Round each share to 2 decimals: 33.33 each",
+        "Charge 33.34 each and keep the extra"
+      ],
+      "answer": 1,
+      "explain": "Shares must sum to the total exactly. Use integer minor units and distribute the remainder deterministically."
+    },
+    {
+      "q": "In BookMyShow, why separate `Seat` from `ShowSeat`?",
+      "options": [
+        "For performance only",
+        "A Seat is the physical chair in a screen's layout (catalogue). A ShowSeat is that chair's status and price for one specific show (inventory). Bookings change ShowSeats, never the layout",
+        "Java requires separate classes for each table",
+        "So premium seats can be subclasses"
+      ],
+      "answer": 1,
+      "explain": "Catalogue vs inventory is the core modelling insight. The same pattern appears as Book/Copy and Product/StockItem."
+    },
+    {
+      "q": "During `confirm`, the payment gateway takes up to 3 seconds. What's the concern with calling it while holding the show's lock?",
+      "options": [
+        "None. Holding the lock guarantees correctness",
+        "Every other user of that show is blocked for 3 s. Production code marks the hold 'payment in progress' under the lock, calls the gateway outside it, then re-locks to apply the result",
+        "The gateway will deadlock",
+        "Java doesn't allow network calls in synchronized blocks"
+      ],
+      "answer": 1,
+      "explain": "Never do slow or external I/O inside a critical section. State the trade-off even if your interview code keeps it simple."
+    },
+    {
+      "q": "Two transfers run concurrently: A→B and B→A. Each locks the source account, then the destination. What happens, and what's the fix?",
+      "options": [
+        "Nothing. Locks are reentrant",
+        "A possible deadlock (each holds one lock and waits for the other). Fix: always lock accounts in a global order such as ascending id",
+        "Money is duplicated. Use volatile",
+        "One transfer is lost. Use AtomicLong balances"
+      ],
+      "answer": 1,
+      "explain": "A circular wait is the classic deadlock. Ordered locking removes it."
+    },
+    {
+      "q": "A client times out on `transfer(500)` and retries. How do you make sure the user is charged once?",
+      "options": [
+        "Check whether a transfer with the same amount happened in the last minute",
+        "Require an idempotency key. Store key → outcome atomically, and on a repeated key return the stored outcome without executing again",
+        "Ask the client not to retry",
+        "Use a distributed lock for the whole wallet"
+      ],
+      "answer": 1,
+      "explain": "Idempotency keys are the standard answer. The check-and-store must be atomic for concurrent retries."
+    },
+    {
+      "q": "Splitwise: A owes B 50 and B owes C 50. What does the greedy debt simplification produce?",
+      "options": ["A→B 50, B→C 50", "A→C 50", "C→A 50", "Nothing, because it's already minimal"],
+      "answer": 1,
+      "explain": "Net balances are A −50, B 0, C +50. Match the largest debtor with the largest creditor."
+    },
+    {
+      "q": "Which data structure makes Splitwise's 'how much does X owe Y' and 'net balance of X' both simple?",
+      "options": [
+        "A list of all expenses, recomputed on every query",
+        "An antisymmetric pairwise net map `net[a][b] = −net[b][a]`, updated on every expense and settlement",
+        "One balance per user only",
+        "A graph library"
+      ],
+      "answer": 1,
+      "explain": "Pairwise netting handles 'A owes B 30, B owes A 10 → A owes B 20' for free, and balances are row sums. Keeping the expense list too is fine for history."
+    },
+    {
+      "q": "Library: a member reserves a book with no free copy. When a copy is returned, what's the right behaviour?",
+      "options": [
+        "Put it back on the shelf, available to anyone",
+        "Hold that copy for the first member in the reservation queue for a limited window and notify them. If they don't collect it, it becomes available",
+        "Automatically create a loan for the reserver",
+        "Reject the return until the reserver comes"
+      ],
+      "answer": 1,
+      "explain": "A FIFO queue per book, a held state with lazy expiry, and an Observer-style notification."
+    },
+    {
+      "q": "Two shows on the same screen: `[start1, end1)` and `[start2, end2)`. Which condition means they overlap?",
+      "options": [
+        "`start1 == start2`",
+        "`start1 < end2 && start2 < end1`",
+        "`end1 < start2 || end2 < start1`",
+        "`start1 <= start2 <= end1`"
+      ],
+      "answer": 1,
+      "explain": "The standard half-open interval overlap test. Option C is the *non*-overlap condition, inverted."
+    },
+    {
+      "q": "Late fines are 'per day, capped at ₹500', and next year 'free for faculty'. How do you design for that?",
+      "options": [
+        "Constants in the return method",
+        "A `FinePolicy` strategy injected into the library, so a faculty policy is a new implementation (or chosen per member type)",
+        "A subclass of Library for faculty",
+        "Store fines in the database and compute them in SQL"
+      ],
+      "answer": 1,
+      "explain": "Rules that product managers will change belong behind an interface."
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "title": "Pattern Picker: Which Pattern Fits?",
+  "summary": "Interview-style scenarios. Name the pattern the interviewer is fishing for.",
+  "questions": [
+    {
+      "q": "An ATM must dispense an amount using ₹2000, ₹500 and ₹100 notes, largest first. Each denomination's cassette has a limited count.",
+      "options": ["Observer", "Chain of Responsibility", "Facade", "Prototype"],
+      "answer": 1,
+      "explain": "Each cassette handler dispenses what it can and passes the remainder to the next one. This is the classic CoR interview question."
+    },
+    {
+      "q": "Users subscribe to a YouTube channel and want a notification on every upload.",
+      "options": ["Observer", "Decorator", "Strategy", "Command"],
+      "answer": 0,
+      "explain": "One subject, many dynamically registered observers."
+    },
+    {
+      "q": "A coffee shop sells espresso with any combination of milk, syrup and whipped cream, and each add-on changes the price and description.",
+      "options": ["Builder", "Composite", "Decorator", "Template Method"],
+      "answer": 2,
+      "explain": "Wrap the base beverage repeatedly. Each wrapper adds cost and description while keeping the same interface."
+    },
+    {
+      "q": "The system must call a legacy SOAP inventory service whose methods and data types don't match your `InventoryService` interface.",
+      "options": ["Adapter", "Proxy", "Bridge", "Mediator"],
+      "answer": 0,
+      "explain": "Translate one interface to another without changing either side."
+    },
+    {
+      "q": "An order goes through CREATED → PAID → SHIPPED → DELIVERED, and can be CANCELLED only before shipping.",
+      "options": ["Strategy", "State (or an enum transition table)", "Observer", "Visitor"],
+      "answer": 1,
+      "explain": "Lifecycle with legal and illegal transitions. The full State pattern if behaviour differs a lot per state, a transition table if it's mostly guards."
+    },
+    {
+      "q": "A drawing app needs undo/redo for move, resize and delete actions.",
+      "options": ["Command", "Iterator", "Singleton", "Flyweight"],
+      "answer": 0,
+      "explain": "Each action becomes an object with execute/undo, kept on two stacks. Memento is the snapshot alternative."
+    },
+    {
+      "q": "A product catalog has categories that contain products *or sub-categories*, and you need the total price of any category.",
+      "options": ["Composite", "Decorator", "Chain of Responsibility", "Abstract Factory"],
+      "answer": 0,
+      "explain": "Tree of leaves and containers behind one interface, with recursive aggregation."
+    },
+    {
+      "q": "Uber needs different driver-matching algorithms: nearest, highest-rated, and a new ML-based one next quarter.",
+      "options": ["Template Method", "Strategy", "State", "Facade"],
+      "answer": 1,
+      "explain": "Interchangeable algorithms behind one interface, injected into the matcher."
+    },
+    {
+      "q": "A high-resolution image should only be loaded from disk the first time it's displayed.",
+      "options": ["Proxy (virtual)", "Decorator", "Builder", "Observer"],
+      "answer": 0,
+      "explain": "The proxy has the same interface as the image and controls when the expensive real object is created."
+    },
+    {
+      "q": "In a chat room, users shouldn't hold references to each other. Messages go through the room, which handles delivery and muting.",
+      "options": ["Observer", "Mediator", "Command", "Composite"],
+      "answer": 1,
+      "explain": "A central hub coordinates the peers, which removes the N² coupling."
+    },
+    {
+      "q": "Three report exporters (PDF, CSV, HTML) all do fetch → transform → write header → write rows → write footer. Only the formatting steps differ.",
+      "options": ["Template Method", "Adapter", "Observer", "Prototype"],
+      "answer": 0,
+      "explain": "A fixed skeleton with overridable steps. In Go, pass the varying steps as an interface (Strategy)."
+    },
+    {
+      "q": "The client must place an order with a single call, but that call has to coordinate inventory, payment, shipping and notification services.",
+      "options": ["Facade", "Singleton", "Visitor", "Memento"],
+      "answer": 0,
+      "explain": "One simplified entry point over a subsystem. Your top-level service in most LLD answers is a facade."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Mock: Online Auction (eBay-lite)",
+  "difficulty": "hard",
+  "summary": "Timed auctions with bid-increment rules, anti-sniping extensions, outbid notifications (Observer), an idempotent close, and consistent bidding under contention.",
+  "minutes": 60,
+  "tags": ["mock", "observer", "concurrency", "clock-injection", "state"],
+  "hints": [
+    "Validate the bid in this order: auction open → bidder isn't the seller → bidder isn't already leading → amount meets the minimum.",
+    "Minimum = startingPrice if there are no bids yet, else highest + minIncrement.",
+    "Anti-sniping: after accepting a bid, if `end − now < 60 000`, set `end = now + 60 000`.",
+    "The ordering requirement is the twist. Notifying while holding the per-auction lock keeps events ordered, but a slow listener then blocks bidding. The production answer is a per-auction event queue drained by one dispatcher. `close` stores its Result so a second call returns the same object and notifies nobody."
+  ]
+}

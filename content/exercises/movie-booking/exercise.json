@@ -1,0 +1,13 @@
+{
+  "title": "Movie Ticket Booking (BookMyShow)",
+  "difficulty": "hard",
+  "summary": "Theatres, screens, shows with overlap checks, city search, seat-type pricing, hold → pay → confirm with an injected gateway, cancellation, and no double booking.",
+  "minutes": 90,
+  "tags": ["booking", "classic-problem", "concurrency", "strategy", "machine-coding"],
+  "hints": [
+    "Separate the catalogue (theatre, screen layout, movie) from the inventory (show, per-show seat status). `addShow` copies the screen's seat layout into per-show seat states.",
+    "Overlap on one screen: `start < otherEnd && otherStart < end`, where `end = start + duration`.",
+    "Reuse your seat-hold logic from Day 5: lazy TTL expiry, all-or-nothing, one lock per show.",
+    "`confirm`: check the hold is active, charge the gateway, and on failure release the seats **then** throw. On success mark the seats BOOKED and create the booking."
+  ]
+}

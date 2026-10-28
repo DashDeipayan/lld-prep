@@ -1,0 +1,111 @@
+{
+  "title": "Classic Problems II: Systems & Follow-ups",
+  "summary": "Elevators, rate limiters, pub-sub, ride sharing, e-commerce, KV stores, and the follow-up answers that land.",
+  "questions": [
+    {
+      "q": "Why model the elevator system with an explicit `step()` instead of threads that sleep between floors?",
+      "options": [
+        "Threads are slow",
+        "Discrete ticks make scheduling deterministic and unit-testable. A real-time loop can drive `step()` in production",
+        "Java elevators don't support threads",
+        "To avoid using a TreeSet"
+      ],
+      "answer": 1,
+      "explain": "Make time explicit (ticks or an injected clock) wherever behaviour depends on time."
+    },
+    {
+      "q": "An elevator at floor 3 is moving UP with stops {5}. New car calls: 1 and 6. In what order does LOOK serve them?",
+      "options": ["1, 5, 6", "5, 6, 1", "5, 1, 6", "6, 5, 1"],
+      "answer": 1,
+      "explain": "Keep sweeping in the current direction while there are stops ahead (5, 6), then reverse (1)."
+    },
+    {
+      "q": "A fixed-window rate limiter allows 100 req/min. What's its well-known weakness?",
+      "options": [
+        "It can't handle multiple users",
+        "A burst at the end of one window plus the start of the next allows up to 200 requests within a few seconds",
+        "It uses too much memory",
+        "It needs a database"
+      ],
+      "answer": 1,
+      "explain": "Sliding log/counter or token bucket fix the boundary burst. Know the trade-offs: memory vs accuracy vs burst tolerance."
+    },
+    {
+      "q": "In a pub-sub broker with consumer groups, how do several consumers in the **same** group avoid processing the same message?",
+      "options": [
+        "Each consumer keeps its own offset",
+        "The group shares one committed offset per topic, and `poll` reads and advances it atomically",
+        "Messages are deleted after being read",
+        "Consumers coordinate over a separate chat channel"
+      ],
+      "answer": 1,
+      "explain": "One shared offset per group (or per partition in Kafka) gives work-splitting. Different groups have independent offsets, so each sees everything."
+    },
+    {
+      "q": "Two ride requests arrive at once, and both find driver D as the nearest. What does a correct design guarantee, and how?",
+      "options": [
+        "Nothing. The driver app will reject one",
+        "That D is assigned once: selection and marking ON_TRIP happen atomically (one lock, or CAS on the driver's status with fallback to the next candidate)",
+        "Both rides get D, and the system fixes it later",
+        "Use a random driver to avoid conflicts"
+      ],
+      "answer": 1,
+      "explain": "It's the same check-then-act hazard as seat booking, just with a driver as the resource."
+    },
+    {
+      "q": "E-commerce: when should stock be deducted to avoid overselling?",
+      "options": [
+        "When the item is added to the cart",
+        "Atomically when the order is placed (a reservation), returned on cancel or payment timeout",
+        "When the item ships",
+        "Nightly by a batch job"
+      ],
+      "answer": 1,
+      "explain": "Reserve at placement with all-or-nothing across SKUs. Cart-time reservation hurts availability, and ship-time oversells."
+    },
+    {
+      "q": "KV store with nested transactions: what's the efficient way to support ROLLBACK?",
+      "options": [
+        "Deep-copy the whole map on every BEGIN",
+        "Keep an undo log per open block that records each key's previous value on its first change in that block, and replay it on rollback",
+        "Re-read everything from disk",
+        "Disallow nested transactions"
+      ],
+      "answer": 1,
+      "explain": "Rollback cost is proportional to what changed, not to the store size. COMMIT just discards the logs."
+    },
+    {
+      "q": "Interviewer: \"Now persist everything in a database.\" Best answer for a design built with in-memory maps?",
+      "options": [
+        "\"I'd rewrite the services to use SQL directly.\"",
+        "\"Services depend on repository interfaces, so I'd add DB-backed implementations. Domain code stays the same, and concurrency moves to DB guarantees like conditional updates, unique constraints or optimistic locking.\"",
+        "\"Databases are out of scope for LLD.\"",
+        "\"Serialize the maps to a file.\""
+      ],
+      "answer": 1,
+      "explain": "Name the abstraction (repository) that absorbs the change, and the concurrency consequence."
+    },
+    {
+      "q": "\"Add a promo code that gives 20% off, capped at ₹100\" in a design that already has a `PricingStrategy`. Cleanest change?",
+      "options": [
+        "Add an `if (promo != null)` inside every pricing strategy",
+        "A decorator `PromoPricing(inner, code)` that computes the inner price and subtracts min(20%, 100)",
+        "A new subclass of every strategy",
+        "Store the discounted price in the product table"
+      ],
+      "answer": 1,
+      "explain": "Decorator composes with any existing strategy, and nothing existing is modified."
+    },
+    {
+      "q": "Which answer to \"how would you test this?\" signals the strongest design?",
+      "options": [
+        "\"I'd test it manually through the UI.\"",
+        "\"Time, randomness, payments and notifications are injected, so unit tests use fakes. Concurrency tests start N threads behind a latch and assert invariants like no double booking and conserved money.\"",
+        "\"I'd add print statements.\"",
+        "\"The QA team handles that.\""
+      ],
+      "answer": 1,
+      "explain": "Testability is a design property, and dependency injection is what enables it."
+    }
+  ]
+}

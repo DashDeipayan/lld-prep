@@ -1,0 +1,13 @@
+{
+  "title": "Logging Framework (Chain of Responsibility + Strategy)",
+  "difficulty": "medium",
+  "summary": "The classic 'design a logger': levels, a chain of handlers with their own thresholds, pluggable formatters, failure isolation and thread safety.",
+  "minutes": 45,
+  "tags": ["chain-of-responsibility", "strategy", "classic-problem", "thread-safety"],
+  "hints": [
+    "There are two filters: the logger's level (checked first, cheap) and each handler's own minimum level.",
+    "Formatting is a Strategy (`Formatter`) injected into each handler, so the same message can go to the console as text and to a file as JSON.",
+    "Treat the handlers as a chain where every handler gets a look. One handler throwing must not stop the rest.",
+    "Concurrent logging: the memory handler's sink is shared, so make `handle` synchronized (Java) or guard it with a mutex (Go)."
+  ]
+}

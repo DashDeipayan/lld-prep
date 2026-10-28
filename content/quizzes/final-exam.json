@@ -1,0 +1,156 @@
+{
+  "title": "Final Exam: Interview Readiness",
+  "summary": "15 mixed questions across the whole course. Aim for 13+. Retake after reviewing anything you miss.",
+  "questions": [
+    {
+      "q": "The interviewer says: \"Design a system for a coworking space where members book desks by the hour.\" What's your first move?",
+      "options": [
+        "Draw a class diagram with Desk, Member and Booking",
+        "Clarify: who books, which use cases (book, cancel, check-in?), hourly granularity, concurrency on the same desk, payments in or out of scope. Then write numbered requirements",
+        "Start coding a DeskBookingService",
+        "Ask which database to use"
+      ],
+      "answer": 1,
+      "explain": "Always scope first. Here you'd quickly recognise the interval-overlap and lazy-hold building blocks."
+    },
+    {
+      "q": "Which pair is the 'one noun, two classes' split for a cinema?",
+      "options": ["Movie / Genre", "Seat (layout) / ShowSeat (per-show status)", "User / Account", "Ticket / Receipt"],
+      "answer": 1,
+      "explain": "Catalogue vs inventory. Without it, booking one show would mark the chair as taken for every show."
+    },
+    {
+      "q": "You need: \"Shipping cost is flat, weight-based or distance-based depending on the seller's plan, with more plans later.\" Which pattern, and where's the variation?",
+      "options": [
+        "State on the Order",
+        "Strategy: a `ShippingCostStrategy` chosen per seller plan (via a registry)",
+        "Observer on the Seller",
+        "Singleton ShippingCalculator"
+      ],
+      "answer": 1,
+      "explain": "Interchangeable algorithms, chosen at runtime."
+    },
+    {
+      "q": "Which code most clearly violates Liskov substitution?",
+      "options": [
+        "`class Admin implements Permissions`",
+        "`class ReadOnlyList extends ArrayList` whose `add()` throws UnsupportedOperationException",
+        "`record Money(long minor, String ccy)`",
+        "`interface Notifier { void send(...); }`"
+      ],
+      "answer": 1,
+      "explain": "Callers holding an ArrayList expect `add` to work. Narrow the abstraction instead."
+    },
+    {
+      "q": "Two threads run `if (stock >= q) stock -= q;` on the same product. What's the bug and the minimal fix?",
+      "options": [
+        "No bug, because ints are atomic",
+        "Check-then-act race (overselling). Put the check and the decrement in one critical section, or use a CAS loop",
+        "Make `stock` volatile",
+        "Use `long` instead of `int`"
+      ],
+      "answer": 1,
+      "explain": "volatile gives visibility, not atomicity of the compound operation."
+    },
+    {
+      "q": "An Observer notifies listeners while holding the subject's lock. A listener calls `subject.update()` from its callback. What happens?",
+      "options": [
+        "Works fine",
+        "Re-entrancy problems: a deadlock with non-reentrant locks or channels, or inconsistent state with reentrant ones. Snapshot the listeners, release the lock, then notify",
+        "The JVM forbids it",
+        "The listener is skipped"
+      ],
+      "answer": 1,
+      "explain": "Never run foreign code inside your critical section. (The auction mock is a deliberate exception for ordering. Know the trade-off.)"
+    },
+    {
+      "q": "Interviewer: \"Your parking lot has one global lock. Isn't that a bottleneck?\" Best answer?",
+      "options": [
+        "\"Yes, I'll remove the lock.\"",
+        "\"The critical section is microseconds, so one lock is fine for one lot. If needed I'd lock per floor or size bucket, or CAS on spot state with retries, and with multiple servers move the guarantee into the DB.\"",
+        "\"Locks are never a bottleneck.\"",
+        "\"I'd use a Singleton.\""
+      ],
+      "answer": 1,
+      "explain": "Defend the simple solution with numbers, then show the escalation path."
+    },
+    {
+      "q": "Which is the correct undo/redo rule?",
+      "options": [
+        "Undo pushes onto the undo stack",
+        "A new command clears the redo stack",
+        "Redo clears the undo stack",
+        "Undo of an empty stack throws"
+      ],
+      "answer": 1,
+      "explain": "After a new action, the old 'future' is invalid."
+    },
+    {
+      "q": "A token bucket with capacity 10 and 5 tokens/s is idle for 10 seconds. How many requests can then pass immediately?",
+      "options": ["50", "10", "5", "15"],
+      "answer": 1,
+      "explain": "Refill is capped at capacity. Bursts are bounded by capacity, and the long-term rate by the refill rate."
+    },
+    {
+      "q": "Splitting 1000 paise among 3 people as 33/33/34 percent. Which shares follow the course's rule (floor, then leftover in participant order)?",
+      "options": ["330, 330, 340", "333, 333, 334", "330, 330, 330 (10 lost)", "340, 330, 330"],
+      "answer": 0,
+      "explain": "Floors are 330, 330 and 340, which sum to 1000, so nothing is left over. The rule only matters when the floors fall short of the total."
+    },
+    {
+      "q": "In Go, what's the idiomatic way to let a plain function satisfy a single-method interface?",
+      "options": [
+        "Embed the function in a struct",
+        "Define an adapter type like `type HandlerFunc func(...)` with a method that calls itself",
+        "Use reflection",
+        "It's impossible"
+      ],
+      "answer": 1,
+      "explain": "Like `http.HandlerFunc`. You used SenderFunc, ListenerFunc and StrategyFunc throughout the course."
+    },
+    {
+      "q": "You're 50 minutes into a 60-minute round and two features aren't done. Best move?",
+      "options": [
+        "Keep coding silently until time's up",
+        "Make sure the main flow runs. Stub the remaining pieces with clear names and TODOs, and use the last minutes to explain how you'd finish them and handle the follow-ups",
+        "Delete the code and start over",
+        "Apologise and stop"
+      ],
+      "answer": 1,
+      "explain": "A working core plus a clear plan beats half-finished everything."
+    },
+    {
+      "q": "What makes a design testable in a way interviewers notice?",
+      "options": [
+        "Static utility classes",
+        "Constructor-injected dependencies (clock, random, gateways, notifiers) behind interfaces, so tests use fakes",
+        "Logging everything",
+        "Public fields"
+      ],
+      "answer": 1,
+      "explain": "Every exercise in this course relied on it."
+    },
+    {
+      "q": "Elevator dispatch: car A is idle 6 floors away. Car B is 2 floors away, moving away from the caller with stops 4 floors further on. With the course's cost function, which car answers?",
+      "options": [
+        "B, because it's closer",
+        "A: cost 6, vs B's 4 to its turnaround + 6 back = 10",
+        "Both",
+        "Neither"
+      ],
+      "answer": 1,
+      "explain": "Direction-aware cost. A car moving away has to finish its sweep first."
+    },
+    {
+      "q": "Which statement about KV-store transactions is correct?",
+      "options": [
+        "ROLLBACK must restore a full snapshot of the store",
+        "Recording a key's previous value on its first change in a block makes ROLLBACK proportional to the changes, and COMMIT just drops the logs",
+        "Nested transactions require a database",
+        "COMMIT closes only the innermost block in every system"
+      ],
+      "answer": 1,
+      "explain": "An undo log per block. (Whether COMMIT closes all blocks is a spec detail, so clarify it with the interviewer.)"
+    }
+  ]
+}

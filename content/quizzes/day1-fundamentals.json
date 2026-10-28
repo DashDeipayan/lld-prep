@@ -1,0 +1,111 @@
+{
+  "title": "Day 1 Check: Playbook, OOP & SOLID",
+  "summary": "Scenario questions the way interviewers ask them. 70% to pass.",
+  "questions": [
+    {
+      "q": "You're 12 minutes into a 45-minute OOD round. You have a polished class diagram but no code. What's the best move?",
+      "options": [
+        "Add sequence diagrams for every use case so the design is complete",
+        "Say which parts are good enough, pick the main use case, and start coding the central service top-down",
+        "Ask more clarifying questions to be sure the requirements are right",
+        "Refactor the diagram to add more design patterns"
+      ],
+      "answer": 1,
+      "explain": "The most common no-hire reason is not finishing a working core. Move to code for the main flow and come back to detail later."
+    },
+    {
+      "q": "Which clarifying question changes the design the most for a movie-ticket booking system?",
+      "options": [
+        "What colour scheme should the seat map use?",
+        "Should I use Java 17 or Java 21?",
+        "Can two users try to book the same seat at the same time, and how long can a seat be held during payment?",
+        "How many movies are released per year?"
+      ],
+      "answer": 2,
+      "explain": "Concurrency on shared resources (seat holds and TTLs) changes the core model and the locking strategy. The other questions don't change any class."
+    },
+    {
+      "q": "`class Penguin extends Bird` and `Penguin.fly()` throws `UnsupportedOperationException`. Which principle is violated, and what's the fix?",
+      "options": [
+        "SRP. Split Penguin into two classes",
+        "LSP. Narrow the abstraction (e.g. a separate `Flyable` capability) so callers never get a Bird that can't do what Bird promises",
+        "DIP. Inject the flying behaviour",
+        "ISP. Make `fly()` return a boolean"
+      ],
+      "answer": 1,
+      "explain": "A subtype that can't honour the base type's contract breaks Liskov substitution. Fix the hierarchy so the capability is only promised where it exists."
+    },
+    {
+      "q": "`fee(Vehicle v)` contains `switch (v.type()) { case CAR: …; case BIKE: … }` and the product team adds a vehicle type every quarter. Which refactor do interviewers want to see?",
+      "options": [
+        "Add a `default` branch that throws",
+        "Move the switch into a static utility class",
+        "Make the fee polymorphic (a method on each vehicle type or a pricing strategy per type), so a new type is a new class and existing code is untouched",
+        "Store fees in a `Map<String, Integer>` inside the switch"
+      ],
+      "answer": 2,
+      "explain": "This is Open/Closed: closed for modification, open for extension. A lookup map can also be fine for pure data. The key point is that adding a type must not mean editing branching logic."
+    },
+    {
+      "q": "Which of these is a **value object** rather than an entity?",
+      "options": ["Order #A-1001", "A Driver with id `d-42`", "Money(500, \"INR\")", "A ParkingTicket"],
+      "answer": 2,
+      "explain": "Money has no identity. Two `Money(500, INR)` are interchangeable, and it should be immutable. The others keep their identity across state changes."
+    },
+    {
+      "q": "In Go, `type Admin struct { User }`. Which statement is true?",
+      "options": [
+        "Admin is a subtype of User and can be passed to `func f(u User)`",
+        "User's methods are promoted onto Admin, but an Admin is not a User. Polymorphism needs an interface both satisfy",
+        "Embedding copies User's fields but not its methods",
+        "Go forbids embedding structs that have methods"
+      ],
+      "answer": 1,
+      "explain": "Embedding is composition with method promotion, not inheritance. To substitute, accept an interface that both types implement."
+    },
+    {
+      "q": "`OrderService` has `private final EmailSender sender = new SmtpEmailSender(\"smtp.prod\");`. What's the main problem an interviewer will point out?",
+      "options": [
+        "It should be `static`",
+        "High-level policy depends on a concrete low-level detail, so you can't test it or swap it. Inject an interface through the constructor (DIP)",
+        "SMTP is outdated",
+        "The field should be public for flexibility"
+      ],
+      "answer": 1,
+      "explain": "Constructor injection of an abstraction is the standard fix. It's also what makes the code unit-testable with a fake sender."
+    },
+    {
+      "q": "What does the filled-diamond arrow `Lot ◆── Floor` say in a class diagram?",
+      "options": [
+        "Floor inherits from Lot",
+        "Lot uses Floor temporarily inside one method",
+        "Composition: Lot owns its Floors, and they don't exist without it",
+        "Floor implements the Lot interface"
+      ],
+      "answer": 2,
+      "explain": "A filled diamond is composition, ownership with a shared lifecycle. A hollow diamond is aggregation, where the part has an independent lifecycle."
+    },
+    {
+      "q": "Code does `if (acct.getBalance() >= amt) acct.setBalance(acct.getBalance() - amt);` in a service. Best critique?",
+      "options": [
+        "Fine as is. Services own the logic",
+        "It breaks encapsulation (ask instead of tell). `Account.withdraw(amt)` should enforce its own invariant, which also lets you make it atomic",
+        "Use floating point for money",
+        "Replace with a Singleton account manager"
+      ],
+      "answer": 1,
+      "explain": "Invariants belong with the data. Putting withdraw on Account removes duplication and gives you one place to add locking."
+    },
+    {
+      "q": "Your logic calls `System.currentTimeMillis()` / `time.Now()` deep inside a pricing method. Why do experienced interviewers dislike that?",
+      "options": [
+        "It's slow",
+        "It hides a dependency. Time-based behaviour (hourly fees, TTL expiry) becomes untestable. Inject a clock",
+        "It returns UTC",
+        "It isn't thread-safe"
+      ],
+      "answer": 1,
+      "explain": "Treat time and randomness as injected dependencies, so tests can control them. Several exercises in this course rely on this."
+    }
+  ]
+}

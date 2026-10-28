@@ -1,0 +1,13 @@
+{
+  "title": "Rate Limiter: Three Algorithms, One Interface",
+  "difficulty": "medium",
+  "summary": "Token bucket, fixed window and sliding-window log behind one RateLimiter interface. Per key, clock-injected and thread-safe.",
+  "minutes": 50,
+  "tags": ["rate-limiter", "strategy", "concurrency", "clock-injection"],
+  "hints": [
+    "Token bucket per key: `{tokens, lastRefill}`. On each call: `tokens = min(capacity, tokens + elapsedSeconds * rate)`, then take 1 if `tokens >= 1` (allowing a tiny epsilon for floating-point error).",
+    "Fixed window: `windowStart = now - (now % window)`. Reset the count when the stored start differs.",
+    "Sliding log: a deque of timestamps per key. Drop entries with `now - ts >= window` before counting.",
+    "Concurrency: `ConcurrentHashMap.computeIfAbsent` for per-key state, plus `synchronized` on that state object. In Go, a mutex around the map is enough."
+  ]
+}

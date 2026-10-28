@@ -1,0 +1,93 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+)
+
+type Sender interface {
+	Send(to, msg string) error
+}
+
+type Clock func() time.Time
+
+var ErrRateLimited = errors.New("rate limited")
+
+type SenderFunc func(to, msg string) error
+
+func (f SenderFunc) Send(to, msg string) error { return f(to, msg) }
+
+type retrying struct {
+	inner Sender
+	max   int
+}
+
+func WithRetry(inner Sender, maxAttempts int) Sender {
+	if maxAttempts < 1 {
+		panic("maxAttempts must be >= 1")
+	}
+	return &retrying{inner, maxAttempts}
+}
+
+func (r *retrying) Send(to, msg string) error {
+	var err error
+	for i := 0; i < r.max; i++ {
+		if err = r.inner.Send(to, msg); err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
+type rateLimited struct {
+	mu     sync.Mutex
+	inner  Sender
+	clock  Clock
+	max    int
+	window time.Duration
+	sent   map[string][]time.Time
+}
+
+func WithRateLimit(inner Sender, clock Clock, max int, window time.Duration) Sender {
+	return &rateLimited{inner: inner, clock: clock, max: max, window: window, sent: map[string][]time.Time{}}
+}
+
+func (r *rateLimited) Send(to, msg string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := r.clock()
+	times := r.sent[to]
+	i := 0
+	for i < len(times) && now.Sub(times[i]) >= r.window {
+		i++
+	}
+	times = times[i:]
+	r.sent[to] = times
+	if len(times) >= r.max {
+		return fmt.Errorf("%w: %s", ErrRateLimited, to)
+	}
+	if err := r.inner.Send(to, msg); err != nil {
+		return err // failed sends don't consume quota
+	}
+	r.sent[to] = append(times, now)
+	return nil
+}
+
+type logging struct {
+	inner Sender
+	log   *[]string
+}
+
+func WithLogging(inner Sender, log *[]string) Sender { return &logging{inner, log} }
+
+func (l *logging) Send(to, msg string) error {
+	err := l.inner.Send(to, msg)
+	status := "OK"
+	if err != nil {
+		status = "FAIL"
+	}
+	*l.log = append(*l.log, fmt.Sprintf("%s %s: %s", status, to, msg))
+	return err
+}

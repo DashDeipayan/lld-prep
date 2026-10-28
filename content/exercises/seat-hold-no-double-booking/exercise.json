@@ -1,0 +1,13 @@
+{
+  "title": "Seat Holds Without Double-Booking",
+  "difficulty": "medium",
+  "summary": "All-or-nothing multi-seat holds with a TTL, confirm and release, proven safe under 64 concurrent bookers.",
+  "minutes": 50,
+  "tags": ["concurrency", "booking", "ttl", "clock-injection", "all-or-nothing"],
+  "hints": [
+    "Model each seat as `{status, holdId, expiresAt}`. A HELD seat whose hold has expired counts as **available**. Check that lazily, so no timers are needed.",
+    "`hold`: under **one lock**, validate every requested seat first, then mark them all. Never mark some seats and then fail.",
+    "Keep a `Map<holdId, Hold{seats, expiresAt, state}>` so that `confirm` and `release` are O(seats in hold).",
+    "Before confirming, check the hold hasn't expired **and** its seats still point at this hold."
+  ]
+}
