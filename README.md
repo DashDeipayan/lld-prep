@@ -1,8 +1,10 @@
 # LLD Prep
 
-**Fourteen days to a low-level design interview, all offline.**
+**Fourteen days to a low-level design interview. Runs offline on your laptop, or hosted with an account for each user.**
 
 LLD Prep is a self-contained web app for experienced software engineers with a low-level design (LLD) or machine-coding round coming up in about two weeks. It replaces a pile of blog posts, GitHub repos and YouTube playlists with a single plan: about 4 focused hours a day, mixing lessons, coding exercises that are compiled and tested on your machine, step-by-step build-alongs, quizzes and timed mock interviews.
+
+By default it runs fully offline for one person. Give it a MongoDB connection string and it switches to [accounts mode](#accounts-mode-mongodb): people sign in and each gets their own progress, which is how you'd host it for others.
 
 Every code example and exercise is available in **Java** and **Go**, written idiomatically in each language rather than translated from one to the other.
 
@@ -19,7 +21,7 @@ It assumes you already work as an engineer. It doesn't teach what a class or an 
 - [Exercise catalog](#exercise-catalog)
 - [Mock interviews and the rubric](#mock-interviews-and-the-rubric)
 - [Command-line options](#command-line-options)
-- [Your data](#your-data)
+- [Your data](#your-data) (single-user files, or accounts with MongoDB)
 - [Hosting with Docker and Render](#hosting-with-docker-and-render)
 - [How it works](#how-it-works)
 - [Project layout](#project-layout)
@@ -204,7 +206,10 @@ go run . [flags]
 | `-addr` | `127.0.0.1:8080` | Address to listen on. |
 | `-data` | `data` | Folder for progress (`progress.json`) and code drafts (`drafts/`). |
 | `-no-open` | off | Don't open the browser on start. |
-| `-password` | `$LLDPREP_PASSWORD` | Require this password (HTTP basic auth, any username). Use it whenever the app is reachable from other machines. |
+| `-password` | `$LLDPREP_PASSWORD` | Require this password (HTTP basic auth, any username). Use it when hosting in single-user mode. |
+| `-mongo` | `$MONGODB_URI` | MongoDB connection string. Turns on [accounts mode](#accounts-mode-mongodb): sign-in and separate progress per user. |
+| `-mongo-db` | `$MONGODB_DB` or `lldprep` | Database name in accounts mode. |
+| `-invite` | `$LLDPREP_INVITE_CODE` | In accounts mode, the code people must enter to create an account. |
 | `-dev` | off | Serve `web/` and `content/` from disk and reload content on every request, for editing. |
 | `-verify` | off | Content check: run every reference solution against its tests in both languages, then exit. |
 | `-only` | | With `-verify`, check only units whose id contains this string. |
@@ -222,6 +227,10 @@ go run . -verify -only booking
 
 ## Your data
 
+There are two modes. The app picks one from whether a MongoDB URI is set.
+
+### Single-user mode (default)
+
 - **No database, no browser storage, no network.** All state is plain files under `-data` (`./data` by default):
   - `data/progress.json`: completed items, quiz scores, bookmarks, mock history and settings.
   - `data/drafts/*.txt`: your autosaved code, one file per exercise, language and step.
@@ -229,13 +238,36 @@ go run . -verify -only booking
 - **Start over** with *Settings → Reset progress*, which clears progress, scores, bookmarks and mock history but keeps your code drafts. To wipe everything, delete `data/`.
 - `data/` is in `.gitignore`.
 
+### Accounts mode (MongoDB)
+
+Start the server with a MongoDB URI and every visitor signs in, so each person has their own progress:
+
+```bash
+MONGODB_URI="mongodb://127.0.0.1:27017" LLDPREP_INVITE_CODE="pick-a-code" go run .
+```
+
+- **Sign-up and sign-in** use a username and password. Passwords are stored as bcrypt hashes. A login lasts 30 days in an `HttpOnly` cookie, and *Settings → Sign out* ends it.
+- **Each user's progress and code drafts** are stored separately. Everything listed under single-user mode is kept per account.
+- **Set an invite code** with `LLDPREP_INVITE_CODE` when the app is public. Every account can run code on the server, so the code decides who gets one. Without it, anyone can sign up, and the server prints a warning on start.
+- **Moving local progress into an account:** *Export progress* in the local app, then *Import progress* after signing in.
+- Ten wrong passwords in 15 minutes for one username from one IP address block further attempts for a while.
+
+The database has four collections:
+
+| Collection | One document per | Contents |
+|---|---|---|
+| `users` | user | `_id` (username), bcrypt `passwordHash`, `createdAt` |
+| `sessions` | login | `_id` (SHA-256 of the cookie token), `user`, `expiresAt`. MongoDB deletes expired sessions itself (TTL index). |
+| `progress` | user | `_id` (username), `state` (progress, quiz scores, bookmarks, mock history, settings, as a normal document), `updatedAt` |
+| `drafts` | user, exercise, language and step | `_id` (`user/key`), `user`, `key`, `code`, `updatedAt` |
+
 ---
 
 ## Hosting with Docker and Render
 
 The repo includes a `Dockerfile` (the server, Go 1.23 and JDK 17 in one image), `docker-entrypoint.sh` and a Render Blueprint (`render.yaml`).
 
-> **Always set a password when hosting.** The app compiles and runs whatever code it receives. Without `LLDPREP_PASSWORD`, anyone who finds the URL can run code on your server. The app is also single-user: everyone who logs in shares one set of progress.
+> **Always restrict access when hosting.** The app compiles and runs whatever code it receives, so anyone who can use it can run code on your server. In accounts mode, set `LLDPREP_INVITE_CODE`. In single-user mode, set `LLDPREP_PASSWORD`.
 
 ### Run the container locally
 
@@ -247,20 +279,38 @@ docker run --rm -p 8080:8080 -e LLDPREP_PASSWORD=change-me -v lldprep-data:/data
 
 Progress is stored in `/data` inside the container. The `-v lldprep-data:/data` volume keeps it between runs. User code runs as an unprivileged `app` user, not root.
 
-### Deploy on Render
+With accounts mode against MongoDB:
 
-1. Push this repo to GitHub or GitLab.
-2. In Render, choose **New → Blueprint** and select the repo. Render reads `render.yaml` and creates:
-   - a **Docker web service** with a health check on `/healthz` (the only path that doesn't need the password),
-   - a **1 GB persistent disk** mounted at `/data`, which holds your progress and drafts.
-3. When prompted, enter a value for **`LLDPREP_PASSWORD`**.
-4. Open the `https://<name>.onrender.com` URL and sign in with any username and that password.
+```bash
+docker run --rm -p 127.0.0.1:8080:8080 -e MONGODB_URI="mongodb+srv://..." -e LLDPREP_INVITE_CODE=pick-a-code lldprep
+```
 
-**Plan and resources:**
-- A persistent disk requires a paid instance, so the Blueprint uses the `starter` plan. On the free plan, remove the `disk:` block from `render.yaml`. The app works, but your progress is lost whenever the service restarts or spins down. Use *Settings → Export progress* regularly if you do this.
+### Deploy on Render with MongoDB Atlas (recommended)
+
+Render doesn't offer MongoDB itself, so use MongoDB Atlas. Its free M0 cluster is plenty. Because progress lives in the database, Render's **free** instance is enough and no disk is needed.
+
+**1. Create the database (https://cloud.mongodb.com)**
+1. Create a free **M0** cluster.
+2. **Database Access:** add a database user with a password.
+3. **Network Access:** add `0.0.0.0/0`. Render's free instances have no fixed outgoing IP address. Access is still protected by the database user's password.
+4. **Connect → Drivers:** copy the connection string, `mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority`, and put in your password.
+
+**2. Create the service on Render**
+1. Choose **New → Blueprint** and select this repo. Render reads `render.yaml` and creates a free Docker web service with a health check on `/healthz`.
+2. When prompted, enter:
+   - **`MONGODB_URI`:** the Atlas connection string.
+   - **`LLDPREP_INVITE_CODE`:** the code you'll give to the people who should be able to sign up.
+3. Open `https://<name>.onrender.com`, click **Create an account**, and enter the invite code.
+
+To set it up by hand instead, create a **Web Service** from the repo with **Runtime: Docker**, add those two environment variables, and set the health check path to `/healthz`. Render's `$PORT` is picked up automatically.
+
+**Resources:**
 - The app needs about 512 MB of memory. Running Java (`javac` plus a JVM) is the heaviest part.
+- On the free plan, the service sleeps after about 15 minutes without visits and takes 30–60 seconds to wake. Progress is safe in MongoDB.
 
-To deploy without the Blueprint, create a **Web Service** from the repo with **Runtime: Docker**, add the `LLDPREP_PASSWORD` environment variable, set the health check path to `/healthz`, and attach a disk at `/data`. Render's `$PORT` is picked up automatically.
+### Deploy on Render in single-user mode
+
+Leave out `MONGODB_URI` and set `LLDPREP_PASSWORD` instead. Progress is then written to `/data`, so attach a Render **disk** at `/data` (paid instances only), or it's lost whenever the service restarts.
 
 ---
 
@@ -270,11 +320,11 @@ To deploy without the Blueprint, create a **Web Service** from the repo with **R
  Browser (Preact + Monaco)  ──HTTP/JSON──▶  Go server (single binary)
                                               ├─ content/  (embedded: lessons, exercises, quizzes, plan)
                                               ├─ web/      (embedded: UI and vendored libraries)
-                                              ├─ data/     (your progress and drafts, plain files)
+                                              ├─ data/ or MongoDB   (progress and drafts: files, or one record per user)
                                               └─ runner ──▶ javac/java  or  go test   (temp dir per run)
 ```
 
-- **Server:** Go standard library only. `//go:embed` bundles `web/` and `content/` into the binary.
+- **Server:** Go, with only two outside libraries: the official MongoDB driver and `golang.org/x/crypto` for bcrypt. Both are used only in accounts mode. `//go:embed` bundles `web/` and `content/` into the binary.
 - **Code runner:** each run copies your code, the hidden tests and a small harness into a fresh temporary directory:
   - **Java:** compiled with `javac` and run by a reflection-based test runner (`internal/runner/assets/TestRunner.java`) that reports each test's result separately, with an 8 s timeout per test.
   - **Go:** run with `go test -json`, with `GOPROXY=off` and a guard file injected so that a panic fails only one test, not the whole suite.
@@ -293,9 +343,14 @@ To deploy without the Blueprint, create a **Web Service** from the repo with **R
 | `GET /api/solution/{kind}/{id}/{lang}` | Reference solution |
 | `GET /api/search?q=` | Full-text search |
 | `GET /api/toolchains` | Detected JDK and Go versions |
-| `GET` / `PUT /api/state` | Read and write progress |
+| `GET /api/auth/me` | Mode (`local` or `accounts`), the signed-in user, and whether sign-up needs an invite |
+| `POST /api/auth/signup` · `/api/auth/login` | `{username, password, invite}`; sets the session cookie |
+| `POST /api/auth/logout` | Ends the session |
+| `GET` / `PUT /api/state` | Read and write progress (the signed-in user's, in accounts mode) |
 | `GET` / `PUT` / `DELETE /api/draft/{key}` | Code drafts |
 | `POST /api/run` | Compile and run code: `{kind, id, lang, mode: "run" \| "test", code, step}` |
+
+In accounts mode, every `/api/` route except `/api/auth/*` needs a signed-in user and returns `401` otherwise. Requests that change data are refused if they come from another site.
 
 ---
 
@@ -304,13 +359,15 @@ To deploy without the Blueprint, create a **Web Service** from the repo with **R
 ```
 .
 ├── main.go                    server, routes, -verify
-├── go.mod                     module lldprep (stdlib only)
+├── auth.go                    sign-up, sign-in, sessions, login rate limit (accounts mode)
+├── go.mod                     module lldprep (MongoDB driver, x/crypto)
 ├── Dockerfile, docker-entrypoint.sh, render.yaml   hosting
 ├── internal/
 │   ├── content/content.go     loads the plan, lessons, exercises, tutorials, quizzes, mocks; search
 │   ├── runner/                compile/run/test for Java and Go, timeouts, process cleanup
 │   │   └── assets/            TestRunner.java, Go panic guard
-│   └── store/store.go         atomic JSON and draft files under data/
+│   ├── accounts/mongo.go      MongoDB: users, sessions, per-user progress and drafts
+│   └── store/store.go         Store interface; atomic JSON and draft files under data/
 ├── web/
 │   ├── index.html, styles.css
 │   ├── js/                    app shell, lessons, workbench, quiz, mock, editor, markdown
