@@ -1,15 +1,15 @@
-// Command lldprep serves the offline LLD interview prep app.
+// Command lldprep serves the LLD interview prep app.
 //
-//	go run .                 # serve on http://localhost:8080
+//	go run .                 # serve on http://127.0.0.1:8080 (single user, progress in data/)
 //	go run . -verify         # check every reference solution passes its tests
+//	MONGODB_URI=... go run . # accounts mode: sign-in, per-user progress in MongoDB
 package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"lldprep/internal/accounts"
 	"lldprep/internal/content"
 	"lldprep/internal/runner"
 	"lldprep/internal/store"
@@ -41,6 +42,9 @@ func main() {
 	only := flag.String("only", "", "with -verify: only units whose id contains this")
 	noOpen := flag.Bool("no-open", false, "do not open the browser")
 	password := flag.String("password", os.Getenv("LLDPREP_PASSWORD"), "require this password (HTTP basic auth); defaults to $LLDPREP_PASSWORD")
+	mongoURI := flag.String("mongo", os.Getenv("MONGODB_URI"), "MongoDB URI: enables sign-in and per-user progress; defaults to $MONGODB_URI")
+	mongoDB := flag.String("mongo-db", envOr("MONGODB_DB", "lldprep"), "MongoDB database name; defaults to $MONGODB_DB or lldprep")
+	invite := flag.String("invite", os.Getenv("LLDPREP_INVITE_CODE"), "with -mongo: code required to sign up; defaults to $LLDPREP_INVITE_CODE")
 	flag.Parse()
 
 	// Hosting platforms such as Render pass the port in $PORT and expect the
@@ -62,20 +66,41 @@ func main() {
 		os.Exit(runVerify(cs, *only))
 	}
 
-	st, err := store.Open(*dataDir)
-	if err != nil {
-		log.Fatalf("opening data dir: %v", err)
+	au := &auth{inviteCode: *invite, limiter: newLoginLimiter()}
+	var st store.Store
+	if *mongoURI != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		db, err := accounts.Connect(ctx, *mongoURI, *mongoDB)
+		cancel()
+		if err != nil {
+			log.Fatalf("connecting to MongoDB: %v", err)
+		}
+		defer db.Close()
+		au.db, st = db, db
+		log.Printf("accounts mode: users and progress in MongoDB database %q", *mongoDB)
+	} else {
+		files, err := store.OpenFiles(*dataDir)
+		if err != nil {
+			log.Fatalf("opening data dir: %v", err)
+		}
+		st = files
 	}
+
 	a := &app{content: cs, store: st, dev: *dev, contentFS: contentFS}
 	mux := http.NewServeMux()
 	a.routes(mux)
+	au.routes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") })
 	mux.Handle("/", staticHandler(http.FileServer(http.FS(webFS))))
-	var handler http.Handler = mux
+	handler := au.requireUser(mux)
+	public := !isLoopback(*addr)
 	if *password != "" {
-		handler = basicAuth(*password, mux)
-	} else if !isLoopback(*addr) {
+		handler = basicAuth(*password, handler)
+	} else if public && !au.enabled() {
 		log.Printf("WARNING: listening on %s without a password. Anyone who can reach it can run code on this machine. Set -password or $LLDPREP_PASSWORD.", *addr)
+	}
+	if public && au.enabled() && *invite == "" {
+		log.Printf("WARNING: anyone can sign up, and every account can run code on this machine. Set -invite or $LLDPREP_INVITE_CODE to restrict sign-ups.")
 	}
 
 	ln, err := net.Listen("tcp", *addr)
@@ -92,6 +117,13 @@ func main() {
 		go openBrowser(url)
 	}
 	log.Fatal(http.Serve(ln, handler))
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func flagSet(name string) bool {
@@ -112,15 +144,13 @@ func isLoopback(addr string) bool {
 // basicAuth guards everything except /healthz with a single shared password;
 // any username is accepted.
 func basicAuth(password string, h http.Handler) http.Handler {
-	want := sha256.Sum256([]byte(password))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/healthz" {
 			h.ServeHTTP(w, r)
 			return
 		}
 		_, got, ok := r.BasicAuth()
-		sum := sha256.Sum256([]byte(got))
-		if !ok || subtle.ConstantTimeCompare(sum[:], want[:]) != 1 {
+		if !ok || !equalSecret(got, password) {
 			w.Header().Set("WWW-Authenticate", `Basic realm="LLD Prep", charset="UTF-8"`)
 			http.Error(w, "password required", http.StatusUnauthorized)
 			return
@@ -169,7 +199,7 @@ type app struct {
 	content   *content.Store
 	contentFS fs.FS
 	dev       bool
-	store     *store.Store
+	store     store.Store
 	runSlots  chan struct{}
 }
 
@@ -250,7 +280,7 @@ func (a *app) routes(mux *http.ServeMux) {
 		writeJSON(w, runner.Toolchains())
 	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
-		b, err := a.store.LoadState()
+		b, err := a.store.LoadState(r.Context(), userOf(r))
 		if err != nil {
 			httpError(w, err)
 			return
@@ -261,7 +291,11 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/state", func(w http.ResponseWriter, r *http.Request) {
 		b, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
 		if err == nil {
-			err = a.store.SaveState(b)
+			err = a.store.SaveState(r.Context(), userOf(r), b)
+		}
+		if errors.Is(err, store.ErrInvalidState) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		if err != nil {
 			httpError(w, err)
@@ -270,7 +304,11 @@ func (a *app) routes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /api/draft/{key}", func(w http.ResponseWriter, r *http.Request) {
-		code, ok, err := a.store.LoadDraft(r.PathValue("key"))
+		code, ok, err := a.store.LoadDraft(r.Context(), userOf(r), r.PathValue("key"))
+		if errors.Is(err, store.ErrInvalidKey) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if err != nil {
 			httpError(w, err)
 			return
@@ -280,7 +318,11 @@ func (a *app) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/draft/{key}", func(w http.ResponseWriter, r *http.Request) {
 		b, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err == nil {
-			err = a.store.SaveDraft(r.PathValue("key"), string(b))
+			err = a.store.SaveDraft(r.Context(), userOf(r), r.PathValue("key"), string(b))
+		}
+		if errors.Is(err, store.ErrInvalidKey) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		if err != nil {
 			httpError(w, err)
@@ -289,7 +331,7 @@ func (a *app) routes(mux *http.ServeMux) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("DELETE /api/draft/{key}", func(w http.ResponseWriter, r *http.Request) {
-		if err := a.store.DeleteDraft(r.PathValue("key")); err != nil {
+		if err := a.store.DeleteDraft(r.Context(), userOf(r), r.PathValue("key")); err != nil {
 			httpError(w, err)
 			return
 		}

@@ -11,9 +11,12 @@ import { resetMermaidTheme } from './markdown.js';
 import { ExerciseView, TutorialView } from './code.js';
 import { QuizView } from './quiz.js';
 import { MocksView, MockView } from './mock.js';
+import { SignIn } from './auth.js';
 
 let PLAN = null;
 export const plan = () => PLAN;
+// { mode: 'local' } or { mode: 'accounts', user, inviteRequired } from /api/auth/me.
+let AUTH = { mode: 'local' };
 
 // ---- plan helpers ----
 function flatItems() {
@@ -315,6 +318,22 @@ function SearchView({ q }) {
   </div>`;
 }
 
+function Account() {
+  const [busy, setBusy] = useState(false);
+  const signOut = async () => {
+    setBusy(true);
+    await api.logout().catch(() => {});
+    location.reload();
+  };
+  return html`<section class="card">
+    <h2>Account</h2>
+    <div class="account-row">
+      <span>Signed in as <b>${AUTH.user}</b></span>
+      <button class="btn" onClick=${signOut} disabled=${busy}>Sign out</button>
+    </div>
+  </section>`;
+}
+
 function Settings() {
   const s = useAppState();
   const tc = useAsync(() => api.toolchains(), []);
@@ -341,6 +360,7 @@ function Settings() {
   };
   return html`<div class="page narrow">
     <h1>Settings & data</h1>
+    ${AUTH.mode === 'accounts' ? html`<${Account} />` : null}
     <section class="card">
       <h2>Preferences</h2>
       <div class="form-row"><label>Default language</label><${LangToggle} lang=${s.lang} onChange=${setLang} /></div>
@@ -350,7 +370,7 @@ function Settings() {
     </section>
     <section class="card">
       <h2>Toolchains</h2>
-      <p class="muted">Code runs on your machine with the locally installed compilers.</p>
+      <p class="muted">${AUTH.mode === 'accounts' ? 'Code runs on the server with its installed compilers.' : 'Code runs on your machine with the locally installed compilers.'}</p>
       ${tc.data ? html`<ul class="tc">
         <li class=${tc.data.java ? 'ok' : 'bad'}><b>Java</b> ${tc.data.java || 'not found. Install JDK 17+ and restart.'}</li>
         <li class=${tc.data.go ? 'ok' : 'bad'}><b>Go</b> ${tc.data.go || 'not found. Install Go 1.23+ and restart.'}</li>
@@ -358,7 +378,9 @@ function Settings() {
     </section>
     <section class="card">
       <h2>Your data</h2>
-      <p class="muted">Progress lives in <code>data/progress.json</code> and your code in <code>data/drafts/</code>, next to the app. Export makes a portable backup.</p>
+      ${AUTH.mode === 'accounts'
+        ? html`<p class="muted">Your progress and code are saved to your account. Export makes a portable backup, and Import moves progress over from another copy of the app.</p>`
+        : html`<p class="muted">Progress lives in <code>data/progress.json</code> and your code in <code>data/drafts/</code>, next to the app. Export makes a portable backup.</p>`}
       <div class="btn-row">
         <button class="btn" onClick=${exportData}>Export progress</button>
         <button class="btn" onClick=${() => fileRef.current.click()}>Import progress</button>
@@ -417,13 +439,28 @@ document.addEventListener('click', (e) => {
   if (t) setLang(t.dataset.langTab);
 });
 
-(async () => {
+const root = document.getElementById('app');
+
+async function boot() {
+  AUTH = await api.me();
+  if (AUTH.mode === 'accounts' && !AUTH.user) {
+    render(html`<${SignIn} inviteRequired=${AUTH.inviteRequired} onSignedIn=${() => boot().catch(bootFailed)} />`, root);
+    return;
+  }
   const [p, s] = await Promise.all([api.plan(), loadState()]);
   PLAN = p;
   document.documentElement.dataset.lang = s.lang;
-  render(html`<${App} />`, document.getElementById('app'));
-})().catch((e) => {
-  document.getElementById('app').innerHTML = `<div class="boot error">Failed to start: ${e.message}. Is the server running?</div>`;
-});
+  render(html`<${App} />`, root);
+}
+
+function bootFailed(e) {
+  root.innerHTML = '<div class="boot error"></div>';
+  root.firstChild.textContent = `Failed to start: ${e.message}. Is the server running?`;
+}
+
+// A 401 from any API call means the session ended: start over at sign-in.
+addEventListener('lldprep:signed-out', () => { if (AUTH.mode === 'accounts') location.reload(); });
+
+boot().catch(bootFailed);
 
 export { itemKey };
