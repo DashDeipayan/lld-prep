@@ -6,12 +6,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"log"
@@ -45,6 +47,7 @@ func main() {
 	mongoURI := flag.String("mongo", os.Getenv("MONGODB_URI"), "MongoDB URI: enables sign-in and per-user progress; defaults to $MONGODB_URI")
 	mongoDB := flag.String("mongo-db", envOr("MONGODB_DB", "lldprep"), "MongoDB database name; defaults to $MONGODB_DB or lldprep")
 	invite := flag.String("invite", os.Getenv("LLDPREP_INVITE_CODE"), "with -mongo: code required to sign up; defaults to $LLDPREP_INVITE_CODE")
+	publicURL := flag.String("public-url", os.Getenv("LLDPREP_PUBLIC_URL"), "public address used in link previews, e.g. https://lld-prep.example.com; defaults to $LLDPREP_PUBLIC_URL, else the request's host")
 	flag.Parse()
 
 	// Hosting platforms such as Render pass the port in $PORT and expect the
@@ -91,7 +94,7 @@ func main() {
 	a.routes(mux)
 	au.routes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") })
-	mux.Handle("/", staticHandler(http.FileServer(http.FS(webFS))))
+	mux.Handle("/", staticHandler(webFS, strings.TrimRight(*publicURL, "/")))
 	handler := au.requireUser(mux)
 	public := !isLoopback(*addr)
 	if *password != "" {
@@ -145,7 +148,7 @@ func isLoopback(addr string) bool {
 // any username is accepted.
 func basicAuth(password string, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" {
+		if r.URL.Path == "/healthz" || previewAssets[r.URL.Path] {
 			h.ServeHTTP(w, r)
 			return
 		}
@@ -159,16 +162,45 @@ func basicAuth(password string, h http.Handler) http.Handler {
 	})
 }
 
-// staticHandler lets browsers cache the vendored libraries but always
-// revalidate the app's own files, so edits and upgrades show up immediately.
-func staticHandler(h http.Handler) http.Handler {
+// previewAssets are served without the -password prompt so that link-preview
+// crawlers (WhatsApp, Slack, LinkedIn...) can fetch the image and icons.
+var previewAssets = map[string]bool{"/og-image.png": true, "/favicon.svg": true, "/apple-touch-icon.png": true}
+
+// staticHandler serves web/. Browsers may cache the vendored libraries but
+// always revalidate the app's own files, so edits and upgrades show up
+// immediately. index.html gets its __ORIGIN__ placeholders filled in, because
+// link-preview tags need absolute URLs.
+func staticHandler(webFS fs.FS, publicURL string) http.Handler {
+	files := http.FileServer(http.FS(webFS))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/vendor/") {
+		if r.URL.Path == "/" {
+			page, err := fs.ReadFile(webFS, "index.html")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			origin := publicURL
+			if origin == "" {
+				scheme := "http"
+				if isHTTPS(r) {
+					scheme = "https"
+				}
+				origin = scheme + "://" + r.Host
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Write(bytes.ReplaceAll(page, []byte("__ORIGIN__"), []byte(html.EscapeString(origin))))
+			return
+		}
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/vendor/"):
 			w.Header().Set("Cache-Control", "public, max-age=86400")
-		} else {
+		case previewAssets[r.URL.Path]:
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+		default:
 			w.Header().Set("Cache-Control", "no-cache")
 		}
-		h.ServeHTTP(w, r)
+		files.ServeHTTP(w, r)
 	})
 }
 
