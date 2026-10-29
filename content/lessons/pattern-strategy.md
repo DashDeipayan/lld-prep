@@ -81,9 +81,38 @@ type PricingFunc func(time.Duration, SpotSize) int64
 func (f PricingFunc) Fee(d time.Duration, s SpotSize) int64 { return f(d, s) }
 ```
 
+```python
+class PricingStrategy(ABC):
+    @abstractmethod
+    def fee(self, parked: timedelta, size: SpotSize) -> int: ...
+
+
+class HourlyPricing(PricingStrategy):
+    def __init__(self, rate_per_hour: Dict[SpotSize, int]) -> None:
+        self._rate_per_hour = dict(rate_per_hour)
+
+    def fee(self, parked: timedelta, size: SpotSize) -> int:
+        hours = max(1, math.ceil(parked / timedelta(hours=1)))  # round up, minimum 1h
+        return hours * self._rate_per_hour[size]
+
+
+class ParkingLot:
+    def __init__(self, pricing: PricingStrategy) -> None:
+        self._pricing = pricing  # injected
+
+
+# In Python a plain function can be the strategy too: Callable[[timedelta, SpotSize], int]
+```
+
 <div class="lang-note" data-lang="java">
 
 **Java tip:** a single-method strategy interface is a functional interface. Tests and simple variants can pass a lambda: `new ParkingLot((d, s) -> 0)`. Mention it, but keep named classes for real strategies so they're discoverable.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+**Python tip:** functions are first-class, so a one-method strategy can simply be a callable: `ParkingLot(pricing=lambda parked, size: 0)` in a test. Keep named classes (subclassing an ABC) for real strategies, so they're discoverable and can hold configuration such as rate tables.
 
 </div>
 

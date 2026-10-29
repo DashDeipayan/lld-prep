@@ -8,6 +8,6 @@
     "Token bucket per key: `{tokens, lastRefill}`. On each call: `tokens = min(capacity, tokens + elapsedSeconds * rate)`, then take 1 if `tokens >= 1` (allowing a tiny epsilon for floating-point error).",
     "Fixed window: `windowStart = now - (now % window)`. Reset the count when the stored start differs.",
     "Sliding log: a deque of timestamps per key. Drop entries with `now - ts >= window` before counting.",
-    "Concurrency: `ConcurrentHashMap.computeIfAbsent` for per-key state, plus `synchronized` on that state object. In Go, a mutex around the map is enough."
+    "Concurrency: `ConcurrentHashMap.computeIfAbsent` for per-key state, plus `synchronized` on that state object. In Go, a mutex around the map is enough. In Python, a `threading.Lock` per key (created under one map lock), or a single lock for simplicity."
   ]
 }

@@ -1,0 +1,15 @@
+from solution import Status, TaskBoard
+
+board = TaskBoard()
+api = board.create("Design API", "pm", 4)
+ui = board.create("Build UI", "pm", 3)
+board.add_dependency(ui, api)
+board.assign(api, "bob")
+board.assign(ui, "carol")
+print("blocked:", board.blocked_tasks())
+board.move(api, Status.IN_PROGRESS, "bob")
+board.move(api, Status.IN_REVIEW, "bob")
+board.move(api, Status.DONE, "alice")
+board.move(ui, Status.IN_PROGRESS, "carol")
+print("blocked:", board.blocked_tasks())
+print("history %s: %s" % (api, board.history(api)))

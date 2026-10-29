@@ -6,7 +6,7 @@ LLD Prep is a self-contained web app for experienced software engineers with a l
 
 By default it runs fully offline for one person. Give it a MongoDB connection string and it switches to [accounts mode](#accounts-mode-mongodb): people sign in and each gets their own progress, which is how you'd host it for others.
 
-Every code example and exercise is available in **Java** and **Go**, written idiomatically in each language rather than translated from one to the other.
+Every code example and exercise is available in **Java**, **Go** and **Python**, written idiomatically in each language rather than translated from one to the other.
 
 It assumes you already work as an engineer. It doesn't teach what a class or an interface is. It teaches what interviewers score, how to break a vague prompt down into entities in the first 10 minutes, which patterns are worth naming and when, and how to write correct, concurrency-safe code under time pressure.
 
@@ -38,9 +38,10 @@ It assumes you already work as an engineer. It doesn't teach what a class or an 
 |---|---|---|
 | Go | 1.23+ | running the server and Go exercises |
 | JDK | 17+ (`javac` and `java` on `PATH`) | Java exercises |
+| Python | 3.8+ (`python3` on `PATH`; 3.10+ recommended) | Python exercises. Standard library only, nothing to `pip install` |
 | A modern browser | Chrome, Firefox, Safari or Edge | the UI |
 
-You can do the course with only one of the two languages installed. The settings page shows which toolchains were found.
+Go is needed to run the server. Beyond that, you only need the toolchain for the language you practise in. The settings page shows which toolchains were found.
 
 **Run**
 
@@ -58,7 +59,7 @@ go build -o lldprep .
 ./lldprep
 ```
 
-The binary embeds the whole UI and every lesson, exercise and quiz, so you can copy it to another machine (one with a JDK and/or Go) and run it there.
+The binary embeds the whole UI and every lesson, exercise and quiz, so you can copy it to another machine (one with Go, plus a JDK or Python if you use those) and run it there.
 
 After the first run, nothing needs the network: no CDN, no telemetry, no accounts.
 
@@ -69,7 +70,7 @@ After the first run, nothing needs the network: no CDN, no telemetry, no account
 | | Count | What it is |
 |---|---|---|
 | **Daily plan** | 14 days | A fixed agenda for each day of about 195–240 minutes. The dashboard shows today's items, a *Continue* button and your overall progress. |
-| **Lessons** | 24 | Dense, interview-focused reading with Mermaid class and sequence diagrams, plus code that switches between Java and Go. |
+| **Lessons** | 24 | Dense, interview-focused reading with Mermaid class and sequence diagrams, plus code that switches between Java, Go and Python. |
 | **Coding exercises** | 31 | A Monaco editor (the editor from VS Code), *Run* to see your program's output, *Run tests* to see a pass/fail result and message for each hidden test, hints revealed one at a time, and a reference solution you can reveal once you've tried. |
 | **Build-alongs** | 2 | Parking Lot (6 steps) and Splitwise (5 steps). Each step explains one design decision, and you unlock the next step by passing its tests. |
 | **Quizzes** | 8 | Scenario-based multiple-choice questions with an explanation for every answer. The pass mark is 70%. |
@@ -116,7 +117,7 @@ The plan is defined in `content/plan.json`. Week 1 builds the toolkit and week 2
 
 1. **Do the days in order.** Later lessons assume the earlier vocabulary, and the order of the problems is deliberate.
 2. **Write code before reading the reference.** The tests are the feedback loop. Reveal hints one at a time, and reveal the reference only when you're stuck or have finished, then compare designs, not just output.
-3. **Pick one language for interviews and stay with it.** You can switch any exercise between Java and Go, but drilling in one language builds speed.
+3. **Pick one language for interviews and stay with it.** You can switch any exercise between Java, Go and Python, but drilling in one language builds speed. Your code is saved separately for each language.
 4. **Say your design out loud** during the build-alongs and mocks. The rubric rewards communication, and most of what gets candidates rejected happens before they write any code.
 5. **Use the revision lessons** (days 7, 12 and 14) and the final cheat sheet the night before the interview.
 
@@ -124,7 +125,7 @@ The plan is defined in `content/plan.json`. Week 1 builds the toolkit and week 2
 
 ## Exercise catalog
 
-Every exercise has a problem statement, a starter, hidden tests and a reference solution in both languages. Many include concurrency tests (for example, 64 goroutines or threads trying to book the same seats) that only a correctly synchronised design passes.
+Every exercise has a problem statement, a starter, hidden tests and a reference solution in all three languages. Many include concurrency tests (for example, 64 threads or goroutines trying to book the same seats) that only a correctly synchronised design passes.
 
 **Pattern drills**
 
@@ -212,8 +213,9 @@ go run . [flags]
 | `-invite` | `$LLDPREP_INVITE_CODE` | In accounts mode, the code people must enter to create an account. |
 | `-public-url` | `$LLDPREP_PUBLIC_URL` | The site's public address, e.g. `https://lld-prep.deipayandash.com`, used for absolute URLs in link previews. If unset, it's taken from each request's host. |
 | `-dev` | off | Serve `web/` and `content/` from disk and reload content on every request, for editing. |
-| `-verify` | off | Content check: run every reference solution against its tests in both languages, then exit. |
+| `-verify` | off | Content check: run every reference solution against its tests in every language, then exit. |
 | `-only` | | With `-verify`, check only units whose id contains this string. |
+| `-lang` | | With `-verify`, check only this language (`java`, `go` or `python`). |
 
 If `$PORT` is set and `-addr` isn't passed, the app listens on `0.0.0.0:$PORT` and doesn't open a browser. This is what hosting platforms like Render expect.
 
@@ -266,7 +268,7 @@ The database has four collections:
 
 ## Hosting with Docker and Render
 
-The repo includes a `Dockerfile` (the server, Go 1.23 and JDK 17 in one image), `docker-entrypoint.sh` and a Render Blueprint (`render.yaml`).
+The repo includes a `Dockerfile` (the server, Go 1.23, JDK 17 and Python 3 in one image), `docker-entrypoint.sh` and a Render Blueprint (`render.yaml`).
 
 > **Always restrict access when hosting.** The app compiles and runs whatever code it receives, so anyone who can use it can run code on your server. In accounts mode, set `LLDPREP_INVITE_CODE`. In single-user mode, set `LLDPREP_PASSWORD`.
 
@@ -331,6 +333,7 @@ Leave out `MONGODB_URI` and set `LLDPREP_PASSWORD` instead. Progress is then wri
 - **Code runner:** each run copies your code, the hidden tests and a small harness into a fresh temporary directory:
   - **Java:** compiled with `javac` and run by a reflection-based test runner (`internal/runner/assets/TestRunner.java`) that reports each test's result separately, with an 8 s timeout per test.
   - **Go:** run with `go test -json`, with `GOPROXY=off` and a guard file injected so that a panic fails only one test, not the whole suite.
+  - **Python:** syntax-checked first, so a typo shows as a compile error. Then a small harness (`internal/runner/assets/test_runner.py`) runs each `test_*` function in its own thread with an 8 s limit, and reports the assertion message or a short traceback. It runs with `-E -s -B` (ignores `PYTHON*` variables and user site-packages, writes no `.pyc`).
   - Every run has a hard timeout, and the whole process group is killed when it expires, so an infinite loop can't hang the app.
 - **Frontend:** no build step and no npm. Preact, htm, marked, Mermaid and Monaco are vendored in `web/vendor/` and loaded through an import map.
 - **Content** is plain Markdown and JSON on disk, so you can read it, diff it and edit it without the app.
@@ -345,7 +348,7 @@ Leave out `MONGODB_URI` and set `LLDPREP_PASSWORD` instead. Progress is then wri
 | `GET /api/lesson/{id}` · `/api/exercise/{id}` · `/api/tutorial/{id}` · `/api/quiz/{id}` | Content |
 | `GET /api/solution/{kind}/{id}/{lang}` | Reference solution |
 | `GET /api/search?q=` | Full-text search |
-| `GET /api/toolchains` | Detected JDK and Go versions |
+| `GET /api/toolchains` | Detected JDK, Go and Python versions |
 | `GET /api/auth/me` | Mode (`local` or `accounts`), the signed-in user, and whether sign-up needs an invite |
 | `POST /api/auth/signup` · `/api/auth/login` | `{username, password, invite}`; sets the session cookie |
 | `POST /api/auth/logout` | Ends the session |
@@ -368,8 +371,8 @@ In accounts mode, every `/api/` route except `/api/auth/*` needs a signed-in use
 ├── docs/og-card.html          source of the link-preview image (web/og-image.png)
 ├── internal/
 │   ├── content/content.go     loads the plan, lessons, exercises, tutorials, quizzes, mocks; search
-│   ├── runner/                compile/run/test for Java and Go, timeouts, process cleanup
-│   │   └── assets/            TestRunner.java, Go panic guard
+│   ├── runner/                compile/run/test for Java, Go and Python, timeouts, process cleanup
+│   │   └── assets/            TestRunner.java, Go panic guard, test_runner.py + lldtest.py
 │   ├── accounts/mongo.go      MongoDB: users, sessions, per-user progress and drafts
 │   └── store/store.go         Store interface; atomic JSON and draft files under data/
 ├── web/
@@ -380,7 +383,7 @@ In accounts mode, every `/api/` route except `/api/auth/*` needs a signed-in use
     ├── plan.json              the 14-day agenda
     ├── rubric.json            mock scoring criteria
     ├── lessons/*.md           24 lessons
-    ├── exercises/<id>/        31 exercises (Java and Go each)
+    ├── exercises/<id>/        31 exercises (Java, Go and Python each)
     ├── tutorials/<id>/        build-alongs with per-step tests
     ├── quizzes/*.json         8 quizzes
     └── mocks/mocks.json       6 timed mocks
@@ -436,11 +439,19 @@ go/solution.go         starter (package main; must compile)
 go/reference.go.txt    reference solution (.txt so the Go toolchain ignores it)
 go/main.go             demo driver
 go/solution_test.go    standard Go tests; start each with `defer guard(t)`
+python/solution.py     starter (must import cleanly; methods raise NotImplementedError)
+python/reference.py    reference solution (same names as the starter)
+python/main.py         demo driver for "Run"
+python/tests.py        functions named test_*, run in definition order; use eq / check / near / raises from lldtest
 ```
+
+Java and Go are required for every unit. The `python/` folder is optional: when it's missing, the app says the exercise isn't available in Python yet, and `-verify` reports it as a failure so gaps don't go unnoticed.
+
+In lessons, put a `python` fence right after the `java` and `go` fences of the same snippet, and they become one block with three tabs. A block that lacks the reader's language shows its first tab. Python-only guidance goes in `<div class="lang-note" data-lang="python">`.
 
 ### Tutorials: `content/tutorials/<id>/`
 
-These use the exercise layout plus `tutorial.json` (the step list), `intro.md` and `steps/N.md`. Test names carry their step number: `s1_…` in Java and `TestS1_…` in Go. *Check step N* runs the tests for steps 1 through N.
+These use the exercise layout plus `tutorial.json` (the step list), `intro.md` and `steps/N.md`. Test names carry their step number: `s1_…` in Java and Python, `TestS1_…` in Go. *Check step N* runs the tests for steps 1 through N.
 
 ### Quizzes, the plan and mocks
 
@@ -454,7 +465,7 @@ These use the exercise layout plus `tutorial.json` (the step list), `intro.md` a
 go run . -verify
 ```
 
-This checks that, in both languages:
+This checks that, in every language:
 - every reference solution passes all of its tests,
 - every `main` runs,
 - every starter compiles but **does not** pass (so learners have something to do).
@@ -468,6 +479,7 @@ This checks that, in both languages:
 | Symptom | Fix |
 |---|---|
 | Settings shows *Java: not found*, or a run says *Toolchain missing* | Install JDK 17+ and make sure `javac -version` works in the shell that starts the server. |
+| Settings shows *Python: not found* | Install Python 3.8+ and make sure `python3 --version` (or `python --version` on Windows) works in the shell that starts the server. |
 | Settings shows *Go: not found* | Make sure `go version` works in the same shell. |
 | Port already in use | Run `go run . -addr 127.0.0.1:8081`. |
 | The browser doesn't open | Open `http://127.0.0.1:8080` yourself, or pass `-no-open` to stop the server trying. |

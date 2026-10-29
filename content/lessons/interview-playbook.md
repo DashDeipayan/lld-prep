@@ -86,6 +86,18 @@ type ParkingLot interface {
 }
 ```
 
+```python
+class ParkingLot(ABC):
+    @abstractmethod
+    def park(self, v: Vehicle) -> Ticket: ...  # raises LotFullError
+
+    @abstractmethod
+    def unpark(self, ticket_id: str) -> Receipt: ...
+
+    @abstractmethod
+    def available_spots(self, size: SpotSize) -> int: ...
+```
+
 ### 4. Core code (the bulk of the time)
 
 Write code **top-down**: the service's main method first, calling helpers that don't exist yet. Then fill those helpers in. This shows the interviewer the whole flow early, and if you run out of time, the missing pieces are leaf details.

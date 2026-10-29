@@ -43,3 +43,9 @@ Java: `Direction { UP, DOWN, IDLE }` and `DispatchStrategy { Elevator choose(Lis
 Go: `Direction` (`Up`, `Down`, `Idle`) and `DispatchStrategy { Choose(cars []*Elevator, floor int, dir Direction) *Elevator }` are provided. `*Elevator` exposes `ID()`, `Floor()`, `Dir()` and `Stops() []int` (sorted). `NewElevatorSystem(floors, cars int, s DispatchStrategy) *ElevatorSystem`, `RequestPickup(floor, dir) (int, error)`, `RequestDestination(id, floor) error`, `Step() []string`, `Car(id) *Elevator`. Errors: `ErrInvalidFloor`, `ErrInvalidElevator`, `ErrInvalidDirection`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: the `Direction` enum and the `DispatchStrategy` abstract base class (`choose(cars, floor, direction)`) are provided. `Elevator` exposes the properties `id`, `floor` and `direction`, plus `stops()` (a sorted list). Use `ElevatorSystem(floors, cars, strategy)` with `request_pickup(floor, direction)`, `request_destination(car_id, floor)`, `step()` and `car(car_id)`. An invalid floor, car id or `IDLE` pickup raises `ValueError`.
+
+</div>

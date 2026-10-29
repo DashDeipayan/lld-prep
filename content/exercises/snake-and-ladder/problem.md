@@ -42,3 +42,9 @@ Java: `Dice` is an interface (`int roll()`), and `TurnResult` and `Board`'s cons
 Go: `NewBoard(size int, snakes, ladders map[int]int) (*Board, error)` (`ErrInvalidBoard`). `NewGame(b *Board, players []string, d Dice) (*Game, error)` (`ErrNotEnoughPlayers`). `PlayTurn() (TurnResult, error)` (`ErrGameOver`). `Position(p string) int`, `Winner() (string, bool)`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: dice is any zero-argument callable returning 1–6. `TurnResult` is a frozen dataclass with fields `player, roll, from_pos, to_pos, won` (`from` is a keyword in Python). An invalid board or fewer than 2 players raises `ValueError`. A turn after game over raises the provided `GameOverError`. `Game` has `play_turn()`, `position(player)`, and `winner()`, which returns the name or `None`.
+
+</div>

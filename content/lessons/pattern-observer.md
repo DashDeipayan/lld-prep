@@ -87,6 +87,35 @@ func (t *StockTicker) Subscribe(l PriceListener) (unsubscribe func()) {
 }
 ```
 
+```python
+PriceListener = Callable[[str, int], None]  # any callable(symbol, price) can listen
+
+
+class StockTicker:
+    def __init__(self) -> None:
+        self._last: Dict[str, int] = {}
+        self._listeners: List[PriceListener] = []
+
+    def subscribe(self, listener: PriceListener) -> Callable[[], None]:
+        self._listeners.append(listener)
+
+        def unsubscribe() -> None:  # the "unsubscribe" handle; calling it twice is harmless
+            if listener in self._listeners:
+                self._listeners.remove(listener)
+
+        return unsubscribe
+
+    def update(self, symbol: str, price: int) -> None:
+        if self._last.get(symbol) == price:
+            return  # only notify on change
+        self._last[symbol] = price
+        for listener in list(self._listeners):  # iterate a copy: listeners may unsubscribe
+            try:
+                listener(symbol, price)
+            except Exception:
+                pass  # one bad listener must not break the others
+```
+
 ## The questions interviewers ask next
 
 | Question | Good answer |

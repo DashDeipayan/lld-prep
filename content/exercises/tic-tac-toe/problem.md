@@ -30,6 +30,12 @@ Go: `Player` (`X`, `O`) and `Status` (`InProgress`, `XWon`, `OWon`, `Draw`) are 
 
 </div>
 
+<div class="lang-note" data-lang="python">
+
+Python: the `Player` and `Status` enums are provided, along with two errors: bounds and occupied cells raise `InvalidMoveError`, and game over and wrong turn raise `GameStateError`. `TicTacToe(n)` has `move(player, row, col)` (which returns the `Status`), `status()` and `cell(row, col)`. `n < 3` raises `ValueError`.
+
+</div>
+
 ## Extension questions
 
 - *K-in-a-row on a large board (Gomoku)?* (Counters no longer work. Scan the 4 directions from the last move, which is O(k).)

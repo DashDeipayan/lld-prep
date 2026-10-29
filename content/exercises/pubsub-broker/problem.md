@@ -35,6 +35,12 @@ Go: `type Message struct { Offset int64; Payload string }` is provided. `NewBrok
 
 </div>
 
+<div class="lang-note" data-lang="python">
+
+Python: the `Message(offset, payload)` dataclass is provided. Use `Broker()` with `create_topic`, `publish`, `subscribe(topic, group, from_beginning)`, `poll(topic, group, max_messages)`, `seek` and `lag`. Errors: `TopicExistsError`, `UnknownTopicError` and `UnknownGroupError` (all provided), and `ValueError` for a bad offset.
+
+</div>
+
 ## Discussion
 
 - **Retention:** how would you drop old messages? (Segment the log. Offsets stay absolute.)

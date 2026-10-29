@@ -46,3 +46,9 @@ Java: `KVStore` with `void set(String k, String v)`, `Optional<String> get(Strin
 Go: `NewKVStore() *KVStore` with `Set(k, v string)`, `Get(k string) (string, bool)`, `Delete(k string)`, `Count(v string) int`, `Begin()`, `Rollback() error`, `Commit() error`. With no open transaction, they return `ErrNoTransaction`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: `KVStore()` with `set(k, v)`, `get(k)` (which returns the value or `None`), `delete(k)`, `count(v)`, `begin()`, `rollback()` and `commit()`. With no open transaction, rollback and commit raise the provided `NoTransactionError`. `collections.Counter` works well for the value counts.
+
+</div>

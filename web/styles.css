@@ -240,14 +240,16 @@ mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inhe
 .code-tabs { display: flex; gap: 2px; padding: 4px 6px 0; background: var(--surface-2); border-bottom: 1px solid var(--border); }
 .code-tabs button, .code-tabs span { border: 0; background: none; font: inherit; font-size: .78rem; font-weight: 600; color: var(--text-3); padding: 5px 10px 6px; border-bottom: 2px solid transparent; cursor: pointer; }
 .code-tabs span { cursor: default; }
-html[data-lang="java"] .code-tabs button[data-lang-tab="java"], html[data-lang="go"] .code-tabs button[data-lang-tab="go"] { color: var(--accent-text); border-bottom-color: var(--accent); }
+html[data-lang="java"] .code-tabs button[data-lang-tab="java"], html[data-lang="go"] .code-tabs button[data-lang-tab="go"], html[data-lang="python"] .code-tabs button[data-lang-tab="python"],
+html[data-lang="java"] .code-group.no-java .code-tabs button:first-child, html[data-lang="go"] .code-group.no-go .code-tabs button:first-child, html[data-lang="python"] .code-group.no-python .code-tabs button:first-child { color: var(--accent-text); border-bottom-color: var(--accent); }
 .copy-btn { position: absolute; top: 4px; right: 6px; border: 0; background: none; font: inherit; font-size: .75rem; color: var(--text-3); cursor: pointer; padding: 4px 8px; border-radius: 5px; }
 .copy-btn:hover { background: var(--surface); color: var(--text); }
 pre.code { margin: 0; padding: 14px 16px; overflow-x: auto; font-size: .82rem; line-height: 1.55; tab-size: 4; }
 .code-group.multi pre.code { display: none; }
-html[data-lang="java"] .code-group.multi pre[data-lang-body="java"], html[data-lang="go"] .code-group.multi pre[data-lang-body="go"] { display: block; }
+html[data-lang="java"] .code-group.multi pre[data-lang-body="java"], html[data-lang="go"] .code-group.multi pre[data-lang-body="go"], html[data-lang="python"] .code-group.multi pre[data-lang-body="python"],
+html[data-lang="java"] .code-group.multi.no-java pre.code:first-of-type, html[data-lang="go"] .code-group.multi.no-go pre.code:first-of-type, html[data-lang="python"] .code-group.multi.no-python pre.code:first-of-type { display: block; }
 .lang-note { display: none; }
-html[data-lang="java"] .lang-note[data-lang="java"], html[data-lang="go"] .lang-note[data-lang="go"] { display: block; border-left: 3px solid var(--t-tutorial); padding: 2px 14px; margin: 1em 0; background: var(--surface-2); border-radius: 0 8px 8px 0; }
+html[data-lang="java"] .lang-note[data-lang="java"], html[data-lang="go"] .lang-note[data-lang="go"], html[data-lang="python"] .lang-note[data-lang="python"] { display: block; border-left: 3px solid var(--t-tutorial); padding: 2px 14px; margin: 1em 0; background: var(--surface-2); border-radius: 0 8px 8px 0; }
 .mermaid-wrap { margin: 1.2em 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow-x: auto; text-align: center; }
 pre.mermaid { margin: 0; background: none; font-family: var(--font); }
 pre.mermaid:not([data-processed]) { color: var(--text-3); font-size: .8rem; text-align: left; }
@@ -406,3 +408,5 @@ pre.mermaid:not([data-processed]) { color: var(--text-3); font-size: .8rem; text
 .auth-submit { width: 100%; justify-content: center; margin-top: 6px; }
 .auth-switch { text-align: center; margin: 16px 0 0; font-size: .9rem; }
 .account-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.unavailable { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+.unavailable p { margin: 4px 0; }

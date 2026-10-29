@@ -6,7 +6,7 @@
   "tags": ["elevator", "scheduling", "strategy", "mediator", "simulation"],
   "hints": [
     "Each car holds a sorted set of stops. `step()` follows the five rules in the problem **in order**. Write them as five short `if` blocks.",
-    "Java `TreeSet.higher(floor)` / `lower(floor)` answer whether there's a stop above or below. In Go, scan the stops (a map or a sorted slice). Buildings are small.",
+    "Java `TreeSet.higher(floor)` / `lower(floor)` answer whether there's a stop above or below. In Go or Python, scan the stops (a map, set or sorted list; `any(s > floor for s in stops)`). Buildings are small.",
     "Dispatch: compute a cost per car and keep the minimum. Strict `<` gives you 'ties → lowest id' for free.",
     "`requestPickup` adds the floor as a stop on the **chosen** car. `requestDestination` adds it to the given car."
   ]

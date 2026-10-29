@@ -8,6 +8,7 @@
     "There are **two** races: two threads can both see `instance == null`, and `counter++` is a read-modify-write.",
     "Java: the holder idiom (`private static class Holder { static final IdGenerator I = new IdGenerator(); }`) fixes initialisation for free. `AtomicLong` fixes the counter.",
     "Go: `sync.Once` for the instance, `atomic.Int64` (or a mutex) for the counter.",
+    "Python: double-checked locking with a class-level `threading.Lock` for the instance, and a second lock around `self._counter += 1`. The GIL doesn't make `+=` atomic.",
     "Formatting: `String.format(\"%s-%06d\", prefix, n)` / `fmt.Sprintf(\"%s-%06d\", prefix, n)`."
   ]
 }

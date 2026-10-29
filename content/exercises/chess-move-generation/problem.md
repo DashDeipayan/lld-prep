@@ -41,3 +41,9 @@ Java: `enum Color { WHITE, BLACK }` and `enum Kind { KING, QUEEN, ROOK, BISHOP, 
 Go: `Color` (`White`, `Black`) and `Kind` (`King`, `Queen`, `Rook`, `Bishop`, `Knight`, `Pawn`) are provided. Errors: `ErrIllegalMove`, `ErrWrongTurn`, `ErrInvalidSquare`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: the `Color` and `Kind` enums are provided, along with `IllegalMoveError` (a `ValueError`) and `WrongTurnError`. `ChessBoard.empty()` and `ChessBoard.standard()` are class methods. Methods: `place(sq, color, kind)`, `piece_at(sq)`, `moves_from(sq)`, `move(src, dst)` and `turn()`. An invalid square raises `ValueError`. A `NamedTuple` makes a neat hashable `Square`.
+
+</div>

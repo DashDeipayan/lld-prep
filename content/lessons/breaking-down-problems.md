@@ -64,6 +64,21 @@ type LibraryService interface {
 }
 ```
 
+```python
+class LibraryService(ABC):
+    @abstractmethod
+    def borrow(self, member_id: str, isbn: str) -> Loan: ...  # picks any available copy
+
+    @abstractmethod
+    def give_back(self, barcode: str) -> Money: ...  # returns the fine, if any
+
+    @abstractmethod
+    def reserve(self, member_id: str, isbn: str) -> Reservation: ...
+
+    @abstractmethod
+    def search(self, query: str) -> List[Book]: ...
+```
+
 ### 5. Code top-down, then the details
 
 ```java
@@ -77,6 +92,20 @@ Loan borrow(String memberId, String isbn) {
     loans.save(loan);
     return loan;
 }
+```
+
+```python
+def borrow(self, member_id: str, isbn: str) -> Loan:
+    m = self._members.get(member_id)  # raises NotFoundError
+    if self._loans.active_count(m) >= m.limit:
+        raise LimitReachedError()
+    copy = self._copies.first_available(isbn)
+    if copy is None:
+        raise NoCopyAvailableError(isbn)
+    copy.mark_borrowed()
+    loan = Loan(self._ids.next(), copy, m, self._clock.today() + timedelta(days=14))
+    self._loans.save(loan)
+    return loan
 ```
 
 Every line calls something with an obvious name. You can now fill in `firstAvailable` and `activeCount` in any order, or skip them if time runs out, and the design still reads as complete.
@@ -104,6 +133,11 @@ Main          builds everything (dependency injection by hand) and runs the demo
 ```go
 // One package is fine in Go for an interview. Group by file instead:
 // model.go, repository.go, policy.go, service.go, errors.go, main.go
+```
+
+```python
+# In Python, one module per concern works well for an interview (or a single file if time is short):
+# models.py, repositories.py, policies.py, service.py, errors.py, main.py
 ```
 
 **Dependency injection by hand:** `main` constructs the repositories, strategies and clock, and passes them into the service constructors. No frameworks, no singletons.

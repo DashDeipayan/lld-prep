@@ -26,3 +26,9 @@ Provided: `enum CarType`, `record Reservation(String id, String customer, String
 Provided: `CarType` (`Hatchback`, `Sedan`, `SUV`), `Reservation{ID, Customer, CarID string; StartDay, EndDay int; Cost int64; Status string}`. `NewRentalService()`. Methods return `(Reservation, error)` / `(int64, error)`. Errors: `ErrInvalid`, `ErrNotFound`, `ErrConflict`, `ErrBadStatus`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Provided: the `CarType` enum, the frozen `Reservation(id, customer, car_id, start_day, end_day, cost, status)` dataclass and `ReservationError` (for a conflict or wrong status). Invalid input raises `ValueError`. Methods are snake_case: `add_branch`, `add_car`, `search`, `reserve`, `cancel`, `return_car`. They return a **new** snapshot, which `dataclasses.replace` makes easy.
+
+</div>

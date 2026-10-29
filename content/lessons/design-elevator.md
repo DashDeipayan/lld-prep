@@ -73,6 +73,27 @@ Optional<Integer> step() {
 }
 ```
 
+```python
+def step(self) -> Optional[int]:
+    if not self._stops:
+        self.direction = IDLE
+        return None
+    if self.floor in self._stops:  # doors open here
+        self._stops.remove(self.floor)
+        return self.floor
+    if self.direction is IDLE:
+        self.direction = UP if self._nearest_stop() > self.floor else DOWN
+    if self.direction is UP and not any(s > self.floor for s in self._stops):  # nothing ahead: reverse
+        self.direction = DOWN
+    if self.direction is DOWN and not any(s < self.floor for s in self._stops):
+        self.direction = UP
+    self.floor += 1 if self.direction is UP else -1
+    if self.floor in self._stops:
+        self._stops.remove(self.floor)
+        return self.floor
+    return None
+```
+
 A `TreeSet` / sorted structure makes "is there a stop above me?" an O(log n) `ceiling` lookup. In Go, a small sorted slice or a `map[int]bool` scanned per step is fine at building scale.
 
 ## Dispatching hall calls

@@ -40,6 +40,6 @@ classDiagram
   ParkingLot ..> Receipt : returns
 ```
 
-Types that are given to you in the starter: `VehicleType`, `SpotSize`, `Vehicle`, `Ticket`, `Receipt`, `Event`, the clock, and the three interfaces. You implement `Spot`, `HourlyPricing`, `NearestSpotSelector`, `ParkingLot` and `DisplayBoard`.
+Types that are given to you in the starter: `VehicleType`, `SpotSize`, `Vehicle`, `Ticket`, `Receipt`, `Event`, the clock, and the three interfaces (abstract base classes in Python). You implement `Spot`, `HourlyPricing`, `NearestSpotSelector`, `ParkingLot` and `DisplayBoard`.
 
 > **Interview tip:** notice how little inheritance there is. Vehicle types are an **enum**, and the fitting rule is data. Many candidates write `class Car extends Vehicle` and `class Truck extends Vehicle`, then struggle when asked about electric cars. Polymorphism is used where **behaviour varies**: pricing, selection and listeners.

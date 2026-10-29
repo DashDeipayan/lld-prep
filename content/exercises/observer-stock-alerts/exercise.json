@@ -7,7 +7,7 @@
   "hints": [
     "Ticker: remember the last price per symbol and only notify when it **changes**.",
     "Notify over a **snapshot** of listeners (`CopyOnWriteArrayList`, or copy the slice) so a listener can unsubscribe itself mid-notification.",
-    "Wrap each listener call: catch `RuntimeException` in Java, `defer recover()` in Go.",
+    "Wrap each listener call: catch `RuntimeException` in Java, `defer recover()` in Go, `except Exception` in Python.",
     "Alert: keep a `boolean triggered`. Fire when the condition becomes true **and** `!triggered`. Reset when the condition is false again. Ignore other symbols."
   ]
 }

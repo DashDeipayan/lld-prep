@@ -27,6 +27,12 @@ Go: `NewFileSystem() *FileSystem` with `Mkdir(p) error`, `CreateFile(p string, s
 
 </div>
 
+<div class="lang-note" data-lang="python">
+
+Python: `FileSystem()` with `mkdir(p)`, `create_file(p, size)`, `size(p)`, `ls(p)`, `find(p, ext)` and `delete(p)`. Use the built-in exceptions: *not found* → `FileNotFoundError`, *exists* → `FileExistsError`, *not a dir* → `NotADirectoryError`, *invalid* → `ValueError`.
+
+</div>
+
 ## Follow-ups
 
 - *Add `mv`.* (Detach a node from its parent map and attach it elsewhere. Guard against moving a directory into itself.)

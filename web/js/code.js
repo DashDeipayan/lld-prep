@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { update, markDone, getState } from './state.js';
 import { html, useAppState, useAsync, Icon, Markdown, BookmarkButton, LangToggle, Loading, ErrorBox, Difficulty, setLang, fmtMin, useSectionBookmarks, scrollToAnchor } from './ui.js';
 import { CodeEditor } from './editor.js';
+import { LANGS, langLabel, fileName } from './langs.js';
 import { NextUp, Crumbs } from './app.js';
 
 export function humanizeTest(name) {
@@ -47,7 +48,7 @@ export function Results({ result, running, mode }) {
 
 /**
  * Editor + toolbar + results.
- * draftKey(lang) → storage key; starter: {java, go}; runBody(lang, code, mode) → request; onResult(result, mode, lang)
+ * draftKey(lang) → storage key; starter: {java, go, python}; runBody(lang, code, mode) → request; onResult(result, mode, lang)
  */
 export function Workbench({ draftKey, starter, runBody, onResult, header, testLabel = 'Run tests' }) {
   const s = useAppState();
@@ -57,11 +58,13 @@ export function Workbench({ draftKey, starter, runBody, onResult, header, testLa
   const [running, setRunning] = useState(null);
   const saveT = useRef(null);
   const codeRef = useRef('');
+  const available = starter[lang] != null;
 
   useEffect(() => {
     let live = true;
     setCode(null);
     setResult(null);
+    if (!available) return;
     api.draft(draftKey(lang)).then((d) => {
       if (!live) return;
       const c = d.exists ? d.code : starter[lang];
@@ -95,7 +98,7 @@ export function Workbench({ draftKey, starter, runBody, onResult, header, testLa
   };
 
   const reset = () => {
-    if (!confirm(`Replace your ${lang === 'go' ? 'Go' : 'Java'} code with the original starter? This cannot be undone.`)) return;
+    if (!confirm(`Replace your ${langLabel(lang)} code with the original starter? This cannot be undone.`)) return;
     api.deleteDraft(draftKey(lang)).catch(() => {});
     codeRef.current = starter[lang];
     setCode(starter[lang]);
@@ -112,15 +115,17 @@ export function Workbench({ draftKey, starter, runBody, onResult, header, testLa
   return html`<div class="workbench">
     <div class="wb-toolbar">
       <${LangToggle} lang=${lang} onChange=${setLang} />
-      <span class="file-name">${lang === 'go' ? 'solution.go' : 'Solution.java'}</span>
+      <span class="file-name">${fileName(lang)}</span>
       ${header}
       <div class="spacer" />
-      <button class="btn ghost" onClick=${reset} title="Reset to starter code"><${Icon} name="reset" size=${15} /> Reset</button>
-      <button class="btn" onClick=${() => run('run')} disabled=${!!running} title="Run main (⌘ ')"><${Icon} name="play" size=${14} /> Run</button>
-      <button class="btn primary" onClick=${() => run('test')} disabled=${!!running} title="Run tests (⌘ Enter)"><${Icon} name="flask" size=${15} /> ${testLabel}</button>
+      <button class="btn ghost" onClick=${reset} disabled=${!available} title="Reset to starter code"><${Icon} name="reset" size=${15} /> Reset</button>
+      <button class="btn" onClick=${() => run('run')} disabled=${!!running || !available} title="Run main (⌘ ')"><${Icon} name="play" size=${14} /> Run</button>
+      <button class="btn primary" onClick=${() => run('test')} disabled=${!!running || !available} title="Run tests (⌘ Enter)"><${Icon} name="flask" size=${15} /> ${testLabel}</button>
     </div>
     <div class="wb-editor">
-      ${code == null ? html`<${Loading} />` : html`<${CodeEditor} value=${code} lang=${lang} onChange=${onChange}
+      ${!available ? html`<div class="unavailable"><p>This one isn't available in ${langLabel(lang)} yet.</p>
+          <p class="muted">Switch to ${LANGS.filter((l) => starter[l] != null).map(langLabel).join(' or ')} above.</p></div>`
+        : code == null ? html`<${Loading} />` : html`<${CodeEditor} value=${code} lang=${lang} onChange=${onChange}
           onRun=${() => run('run')} onSubmit=${() => run('test')} />`}
     </div>
     <${Results} result=${result} running=${!!running} mode=${running || (result && result.total ? 'test' : 'run')} />
@@ -157,8 +162,7 @@ export function ExerciseView({ id }) {
   if (r.loading) return html`<${Loading} />`;
   if (r.error) return html`<${ErrorBox} error=${r.error} />`;
   const ex = r.data;
-  const passedJava = s.passed[`exercise:${id}:java`];
-  const passedGo = s.passed[`exercise:${id}:go`];
+  const passedIn = LANGS.filter((l) => s.passed[`exercise:${id}:${l}`]);
   const onResult = (res, mode, lang) => {
     if (mode === 'test' && res.status === 'ok' && res.total > 0) {
       update((st) => { st.passed[`exercise:${id}:${lang}`] = st.passed[`exercise:${id}:${lang}`] || new Date().toISOString(); });
@@ -169,7 +173,7 @@ export function ExerciseView({ id }) {
     <${Crumbs} type="exercise" id=${id} />
     <div class="title-row"><h1>${ex.title}</h1><${BookmarkButton} bkey=${'exercise:' + id} type="exercise" id=${id} title=${ex.title} compact /></div>
     <div class="meta-row"><${Difficulty} level=${ex.difficulty} /><span>${fmtMin(ex.minutes)}</span>
-      ${passedJava ? html`<span class="chip ok">✓ Java</span>` : null}${passedGo ? html`<span class="chip ok">✓ Go</span>` : null}</div>
+      ${passedIn.map((l) => html`<span class="chip ok">✓ ${langLabel(l)}</span>`)}</div>
     <div class="tabs small">
       <button class=${tab === 'problem' ? 'on' : ''} onClick=${() => setTab('problem')}>Problem</button>
       <button class=${tab === 'hints' ? 'on' : ''} onClick=${() => setTab('hints')}>Hints <span class="count">${ex.hints.length}</span></button>
@@ -225,7 +229,7 @@ export function TutorialView({ id, anchor }) {
         return html`<button class=${'step-dot' + (step === k ? ' on' : '') + (k <= passed ? ' passed' : '') + (locked ? ' locked' : '')}
           disabled=${locked} title=${locked ? 'Pass the previous step first' : st.title} onClick=${() => setStep(k)}>${k <= passed ? '✓' : k}</button>`;
       })}
-      <span class="muted small">${passed}/${n} steps passed in ${lang === 'go' ? 'Go' : 'Java'}</span>
+      <span class="muted small">${passed}/${n} steps passed in ${langLabel(lang)}</span>
     </div>
     <div ref=${docRef}>
       ${step === 0 ? html`<${Markdown} src=${t.intro} />` : html`<div class="eyebrow">Step ${step} of ${n}</div><h2 class="step-title">${cur.title}</h2><${Markdown} src=${cur.markdown} />`}

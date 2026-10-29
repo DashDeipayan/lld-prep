@@ -36,3 +36,9 @@ Java: `interface Clock { long today(); }`, `interface FinePolicy { long fine(lon
 Go: `type FinePolicy interface { Fine(daysLate int) int64 }`, `type Notifier interface { Notify(memberID, msg string) }` and `type Loan struct { ID, Barcode, ISBN, MemberID string; DueDay int }` are provided, plus `NewPerDayFine(perDay, cap int64)`. `NewLibrary(f FinePolicy, today func() int, n Notifier)`. Errors: `ErrNotFound`, `ErrDuplicate`, `ErrLimitReached`, `ErrNoCopyAvailable`, `ErrNotOnLoan`, `ErrCopyAvailable`, `ErrAlreadyReserved`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: the clock is a zero-argument callable returning today's day number, the notifier is a callable `(member_id, message)`, and `FinePolicy` is an abstract base class with `fine(days_late)`. `Loan` and `LibraryRuleError` are provided. Use `Library(fines, clock, notifier)` with snake_case methods (`add_book`, `borrow`, `give_back`, `available_copies`, ...). Unknown or duplicate entities raise `ValueError`. Rule violations raise `LibraryRuleError`.
+
+</div>

@@ -42,3 +42,9 @@ Provided: `enum Status { TODO, IN_PROGRESS, IN_REVIEW, DONE }`, `UnauthorizedExc
 Provided: `Status` (`Todo`, `InProgress`, `InReview`, `Done`) with `String()` returning the names above. `NewTaskBoard()`. Errors: `ErrInvalid`, `ErrNotFound`, `ErrIllegalTransition`, `ErrUnauthorized`, `ErrBlocked`, `ErrCycle`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Provided: the `Status` enum (its `.value` is the name shown above), plus `UnauthorizedError` and `WorkflowError` (for illegal transitions, cycles, blocked starts and changes to DONE tasks). Unknown ids or an invalid priority raise `ValueError`. Methods are snake_case: `add_dependency`, `move(task_id, to, actor)`, `tasks_for`, `blocked_tasks`, `history`.
+
+</div>

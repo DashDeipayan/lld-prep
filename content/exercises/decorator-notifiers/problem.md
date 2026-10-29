@@ -30,3 +30,9 @@ Java: `Sender.send(to, msg)` throws `RuntimeException` on failure. `RateLimitedE
 Go: `Sender.Send(to, msg string) error`. Constructors: `WithRetry(inner Sender, maxAttempts int) Sender` (panics if `maxAttempts < 1`), `WithRateLimit(inner Sender, clock Clock, max int, window time.Duration) Sender`, `WithLogging(inner Sender, log *[]string) Sender`. `type Clock func() time.Time`. Rate limit errors wrap `ErrRateLimited`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: `Sender` is an abstract base class whose `send(to, msg)` raises an exception on failure. The classes are `RetryingSender(inner, max_attempts)` (raises `ValueError` if `max_attempts < 1`), `RateLimitedSender(inner, clock, max_per_window, window_ms)` and `LoggingSender(inner, log)`. A clock is any zero-argument callable returning milliseconds. `RateLimitedError` is provided. Python's `@decorator` functions are a different thing from this design pattern, although both wrap a callable.
+
+</div>
