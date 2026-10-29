@@ -43,6 +43,31 @@ func (c Chain) Handle(r Request) bool {
 }
 ```
 
+```python
+class Approver(ABC):
+    def __init__(self) -> None:
+        self._next: Optional[Approver] = None
+
+    def link_with(self, nxt: "Approver") -> "Approver":  # fluent chain building
+        self._next = nxt
+        return nxt
+
+    def approve(self, e: Expense) -> str:
+        if self.can_approve(e):
+            return self.name()
+        if self._next is None:
+            raise ApprovalError("no one can approve %d" % e.amount)
+        return self._next.approve(e)
+
+    @abstractmethod
+    def can_approve(self, e: Expense) -> bool: ...
+
+    @abstractmethod
+    def name(self) -> str: ...
+
+# manager.link_with(director).link_with(vp);  manager.approve(expense)
+```
+
 **ATM dispense variant** (asked often): each handler dispenses as many notes of its denomination as possible and passes the **remainder** along. If anything is left at the end, fail and roll back.
 
 **Two styles to distinguish out loud:**
@@ -69,13 +94,31 @@ abstract class DataImporter {
 }
 ```
 
+```python
+class DataImporter(ABC):
+    def run(self, path: Path) -> ImportResult:  # the skeleton: subclasses don't override this
+        rows = self._read(path)
+        parsed = [self.parse(r) for r in rows]
+        self.validate(parsed)
+        return self._save(parsed)
+
+    @abstractmethod
+    def parse(self, row: str) -> Record: ...  # varies: CSV vs JSON lines
+
+    def validate(self, records: List[Record]) -> None:  # optional hook
+        pass
+
+    def _read(self, path: Path) -> List[str]: ...  # shared
+    def _save(self, records: List[Record]) -> ImportResult: ...  # shared
+```
+
 In Go there are no abstract classes. Pass the varying steps as an **interface or function fields** into a struct that owns the skeleton. That's Strategy, and Go programmers will expect you to say so.
 
 ## Iterator: traverse without exposing the internals
 
 You use it every day (`for (x : list)`, `range`). In LLD, it comes up when you build a **custom collection**, such as a playlist with shuffle or repeat modes, a paginated API client, or tree traversal. Say *"I'll expose an `Iterator<Song>` so callers don't depend on how the playlist stores songs."*
 
-Go 1.23+ has range-over-func iterators (`iter.Seq[T]`), which make this idiomatic:
+Go 1.23+ has range-over-func iterators (`iter.Seq[T]`), and Python has generators. Both make this idiomatic:
 
 ```go
 func (p *Playlist) All() iter.Seq[Song] {
@@ -90,6 +133,15 @@ func (p *Playlist) All() iter.Seq[Song] {
 // for s := range playlist.All() { ... }
 ```
 
+```python
+class Playlist:
+    def __iter__(self) -> Iterator[Song]:  # a generator: `yield` makes it lazy, the storage stays private
+        for i in self._order:
+            yield self._songs[i]
+
+# for song in playlist: ...
+```
+
 ## Mediator: objects talk through a hub, not to each other
 
 **Trigger:** *chat rooms, air-traffic control, auction houses, an elevator controller coordinating many elevators*. Without a mediator, every component references every other one (N² links). With it, every component knows only the mediator.
@@ -97,6 +149,17 @@ func (p *Playlist) All() iter.Seq[Song] {
 ```java
 interface ChatRoom { void send(String from, String to, String msg); void join(User u); }
 // Users call room.send(...) and never hold references to other users.
+```
+
+```python
+class ChatRoom(ABC):
+    @abstractmethod
+    def send(self, sender: str, to: str, msg: str) -> None: ...
+
+    @abstractmethod
+    def join(self, user: User) -> None: ...
+
+# Users call room.send(...) and never hold references to other users.
 ```
 
 The **elevator dispatcher** you'll build on Day 8 is a mediator: requests go to the controller, and it decides which car serves them.

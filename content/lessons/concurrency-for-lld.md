@@ -1,6 +1,6 @@
 ---
 title: Concurrency for LLD Interviews
-summary: Find the shared state, protect it at the right granularity, never double-book, and avoid deadlocks, in Java and Go.
+summary: Find the shared state, protect it at the right granularity, never double-book, and avoid deadlocks, in Java, Go and Python.
 ---
 
 Almost every LLD problem has one concurrency question hiding in it: **two users want the same seat, slot, driver, spot, or the last item**. Interviewers want three things:
@@ -53,6 +53,25 @@ Immutable objects (value objects, configuration) need no protection. Say so. It 
 | Fan-out and wait | `sync.WaitGroup`, `errgroup` |
 | Concurrent map | `map` + `Mutex` (preferred), or `sync.Map` for append-mostly caches |
 
+### Python toolbox
+
+| Need | Use |
+|---|---|
+| Guard a critical section | `threading.Lock` (or `RLock` if the same thread re-enters), always as `with lock:` |
+| Many readers, few writers | No read-write lock in the standard library: use one `Lock` and keep it short |
+| Counters | There's no atomic integer. `+=` is a read-modify-write, so protect it with a lock |
+| One-time init | A module-level object (modules are imported once), or double-checked locking with a `Lock` |
+| Producer/consumer | `queue.Queue(maxsize=n)` is a bounded blocking queue (`put`/`get`, with timeouts) |
+| Wait for a condition | `threading.Condition` with `wait`/`notify_all`, or `threading.Event` for a one-shot signal |
+| Start together, then wait | `threading.Barrier`, `Thread.join`, `concurrent.futures.ThreadPoolExecutor` |
+| Limit concurrency | `threading.Semaphore` / `BoundedSemaphore` |
+
+<div class="lang-note" data-lang="python">
+
+**The GIL doesn't make your code thread-safe.** CPython runs one thread's bytecode at a time, but it can switch threads between any two bytecodes. `if seat.free: seat.book()` and `self.count += 1` are each several bytecodes, so both can interleave. Single operations on built-in containers (`dict[k] = v`, `list.append`) happen to be atomic in CPython, but don't rely on that in an interview. Say *"I protect the invariant with a lock"* instead. (For CPU-bound work, the GIL is why you'd reach for processes, but LLD interviews are about correctness, not throughput.)
+
+</div>
+
 > **Go proverb:** *"Don't communicate by sharing memory; share memory by communicating."* For some components (a single elevator controller, a matching engine), the cleanest Go design is **one goroutine that owns the state**, receiving requests on a channel, with no locks at all. Mention it as an alternative.
 
 ## Step 3: choose the granularity
@@ -71,6 +90,12 @@ Check-then-act is the bug:
 ```java
 // ✗ RACE: two threads both see AVAILABLE, both book
 if (seat.status() == AVAILABLE) { seat.setStatus(BOOKED); }
+```
+
+```python
+# ✗ RACE: two threads both see AVAILABLE, both book (the GIL can switch between these two lines)
+if seat.status is Status.AVAILABLE:
+    seat.status = Status.BOOKED
 ```
 
 There are three correct fixes. Know all three.
@@ -106,6 +131,17 @@ func (s *Show) Hold(seatIDs []string, user string, now time.Time) error {
 }
 ```
 
+```python
+# ✓ Lock per show: the check and the act happen inside one critical section
+def hold(self, seat_ids: List[str], user: str, now: int) -> None:
+    with self._lock:
+        for sid in seat_ids:  # validate all...
+            if not self._seats[sid].available_at(now):
+                raise SeatUnavailableError(sid)
+        for sid in seat_ids:  # ...then mutate all
+            self._seats[sid].hold(user, now + self._hold_ttl)
+```
+
 **All-or-nothing:** when booking several seats, validate *all* of them under the lock **before** changing any.
 
 **Holds with a TTL:** a seat held during payment expires after N minutes. Model it with an `expiresAt` timestamp checked **lazily**: a seat is available if it's `AVAILABLE`, or `HELD` and the hold has expired. This avoids background timers, and it's deterministic and testable with an injected clock.
@@ -120,6 +156,15 @@ void transfer(Account a, Account b, long amt) {
     Account first = a.id() < b.id() ? a : b, second = first == a ? b : a;
     synchronized (first) { synchronized (second) { a.debit(amt); b.credit(amt); } }
 }
+```
+
+```python
+# Transfer between two accounts: always lock the lower id first
+def transfer(a: Account, b: Account, amount: int) -> None:
+    first, second = sorted((a, b), key=lambda acc: acc.id)
+    with first.lock, second.lock:
+        a.debit(amount)
+        b.credit(amount)
 ```
 
 Other answers: `tryLock` with a timeout and retry, or a single lock if contention is low.
@@ -156,7 +201,32 @@ final class BoundedQueue<T> {
 }
 ```
 
-In Go it's a buffered channel: `q := make(chan T, cap)`, with `q <- x` and `<-q`. Interviewers sometimes ask you to build it **without** channels, using `sync.Cond`, to check that you understand the mechanics.
+```python
+class BoundedQueue:
+    def __init__(self, cap: int) -> None:
+        self._items: Deque = deque()
+        self._cap = cap
+        lock = threading.Lock()
+        self._not_full = threading.Condition(lock)  # two conditions sharing one lock
+        self._not_empty = threading.Condition(lock)
+
+    def put(self, x) -> None:
+        with self._not_full:
+            while len(self._items) == self._cap:  # while, not if: spurious wakeups
+                self._not_full.wait()
+            self._items.append(x)
+            self._not_empty.notify()
+
+    def take(self):
+        with self._not_empty:
+            while not self._items:
+                self._not_empty.wait()
+            x = self._items.popleft()
+            self._not_full.notify()
+            return x
+```
+
+In Go it's a buffered channel: `q := make(chan T, cap)`, with `q <- x` and `<-q`. In Python it's `queue.Queue(maxsize=cap)`. Interviewers sometimes ask you to build it **without** those, using `sync.Cond` or `threading.Condition`, to check that you understand the mechanics.
 
 ## Thread-safety checklist for your LLD answers
 

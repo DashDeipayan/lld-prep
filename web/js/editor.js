@@ -37,7 +37,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme
 
 /**
  * Code editor component.
- * props: value, lang ('java'|'go'), onChange(code), onRun(), onSubmit(), readOnly, height
+ * props: value, lang ('java'|'go'|'python'), onChange(code), onRun(), onSubmit(), readOnly, height
  */
 export function CodeEditor({ value, lang, onChange, onRun, onSubmit, readOnly = false }) {
   const host = useRef(null);

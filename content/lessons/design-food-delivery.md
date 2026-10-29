@@ -85,6 +85,14 @@ void add(String restaurantId, MenuItem item, int qty) {
 }
 ```
 
+```python
+def add(self, restaurant_id: str, item: MenuItem, qty: int) -> None:
+    if self.restaurant_id is not None and self.restaurant_id != restaurant_id:
+        raise DifferentRestaurantError(self.restaurant_id)  # UI asks "clear cart?"
+    self.restaurant_id = restaurant_id
+    self.lines[item.id] = self.lines.get(item.id, 0) + qty
+```
+
 ## When to assign the delivery partner
 
 - **Assign on ACCEPTED** with an estimated prep time, so the partner arrives as the food is ready. This is the typical answer.

@@ -30,6 +30,12 @@ Go: `Put`/`Offer` on a closed queue return `ErrClosed`. `cap < 1` panics. A plai
 
 </div>
 
+<div class="lang-note" data-lang="python">
+
+Python: `BoundedBlockingQueue(capacity)` with `put(x)`, `take()`, `offer(x, timeout)`, `poll(timeout)`, `close()` and `size()`. Timeouts are in **seconds**, as in the standard `queue` module. `take()`/`poll()` return `None` for *empty* (so `None` can't be queued). `put`/`offer` on a closed queue raise the provided `QueueClosedError`, and `capacity < 1` raises `ValueError`. Use one `threading.Lock` with two `threading.Condition` objects, `not_full` and `not_empty`. The standard library's `queue.Queue` is built the same way, but this exercise asks you to write it yourself.
+
+</div>
+
 ## Interview discussion
 
 - Why `while` and not `if` around `await()`? (Spurious wakeups, and another consumer may have taken the item first.)

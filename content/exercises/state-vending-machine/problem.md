@@ -43,6 +43,12 @@ Errors: `ErrInvalidCoin`, `ErrInvalidQuantity`, `ErrBusy`, `ErrSoldOut`, `ErrIns
 
 </div>
 
+<div class="lang-note" data-lang="python">
+
+Python names: `stock(product, qty)`, `insert_coin(c)`, `select(code)`, `cancel()`, `balance()`, `state()`, `quantity(code)`. Errors: an invalid coin, unknown product or `qty <= 0` raises `ValueError`. Every other error above raises the provided `MachineStateError`.
+
+</div>
+
 ## Follow-ups you may get
 
 - *"Return change using the fewest coins, with a limited coin inventory."* (A greedy change-maker. Where does it live?)

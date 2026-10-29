@@ -52,4 +52,4 @@ Strategy *(different algorithms)* · Factory *(create by type)* · Builder *(man
 - If you're running out of time: say *"I'm going to stub X so the flow is complete,"* and keep the main path working.
 - When they push back, it's a hint, not an attack. *"Good point. That breaks if two users… let me fix it."*
 
-You've built more than 25 systems in two languages in the last two weeks. That's more practice than most candidates get. Trust the script.
+You’ve built more than 25 systems in the last two weeks. That's more practice than most candidates get. Trust the script.

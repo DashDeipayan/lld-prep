@@ -32,11 +32,28 @@ type Car struct {
 func (c *Car) Drive() { c.mode.Steer(); c.engine.Propel() }
 ```
 
+```python
+class Car:
+    def __init__(self, engine: Engine, mode: DrivingMode) -> None:
+        self._engine = engine  # has-a: Petrol, Electric, Hybrid
+        self._mode = mode      # has-a: Manual, Autopilot
+
+    def drive(self) -> None:
+        self._mode.steer()
+        self._engine.propel()
+```
+
 **Say:** *"I'm composing the engine instead of subclassing Car, so engine type and driving mode vary independently. With inheritance that would be N×M classes."*
 
 <div class="lang-note" data-lang="go">
 
 **Go note:** struct embedding (`type Admin struct{ User }`) promotes methods, but it's **not** subtyping. You can't pass an `Admin` where a `User` is expected. Polymorphism in Go comes from interfaces only, and they're satisfied implicitly. Interviewers who know Go like to hear you say that.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+**Python note:** Python is duck-typed, so an interface is a convention unless you write it down. In an interview, write it down: an `abc.ABC` with `@abstractmethod`s makes the contract explicit, and forgetting a method fails at construction time. `typing.Protocol` is the structural alternative (closer to Go interfaces), checked by type checkers rather than at runtime. Python allows multiple inheritance, but for LLD use it only for small mixins. Composition is still the answer.
 
 </div>
 
@@ -70,6 +87,15 @@ func (a *Account) Withdraw(amount int64) error {
 }
 ```
 
+```python
+# ✗ Asking: logic about Account lives outside Account
+if account.balance >= amount:
+    account.balance -= amount
+
+# ✓ Telling: Account protects its own invariant
+account.withdraw(amount)  # raises InsufficientFundsError
+```
+
 Rule: **no public setters on entities** unless the field really is free-form. Each state change gets a method named after the domain operation (`checkIn()`, `cancel()`, `assignDriver()`).
 
 ### 4. Entities vs value objects
@@ -100,6 +126,14 @@ double fee(Vehicle v) {
         case BIKE: return 10;
     }
 }
+```
+
+```python
+def fee(v: Vehicle) -> int:
+    if v.type is VehicleType.CAR:  # ✗ add TRUCK → edit this function
+        return 20
+    if v.type is VehicleType.BIKE:
+        return 10
 ```
 
 **Fix:** polymorphism or a strategy, so a new type is a **new class** and no existing code is edited. The pattern lessons are mostly this principle in different shapes.
@@ -137,6 +171,12 @@ type OrderService struct {
 }
 
 func NewOrderService(n Notifier) *OrderService { return &OrderService{notifier: n} }
+```
+
+```python
+class OrderService:
+    def __init__(self, notifier: Notifier) -> None:  # abstraction, injected
+        self._notifier = notifier
 ```
 
 Constructor injection is also how you'll make every exercise in this course **testable**: tests inject fakes (a fixed clock, a deterministic random source, a recording notifier).

@@ -8,6 +8,6 @@
     "There are two filters: the logger's level (checked first, cheap) and each handler's own minimum level.",
     "Formatting is a Strategy (`Formatter`) injected into each handler, so the same message can go to the console as text and to a file as JSON.",
     "Treat the handlers as a chain where every handler gets a look. One handler throwing must not stop the rest.",
-    "Concurrent logging: the memory handler's sink is shared, so make `handle` synchronized (Java) or guard it with a mutex (Go)."
+    "Concurrent logging: the memory handler's sink is shared, so make `handle` synchronized (Java), or guard it with a mutex (Go) or a `threading.Lock` (Python)."
   ]
 }

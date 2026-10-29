@@ -30,6 +30,12 @@ Provided: `Booking{ID, Room, Organizer string; Start, End int}`, `Slot{Start, En
 
 </div>
 
+<div class="lang-note" data-lang="python">
+
+Provided: the `Booking(id, room, organizer, start, end)` and `Slot(start, end)` dataclasses, plus `NoRoomAvailableError` and `ConflictError`. Methods are snake_case (`add_room`, `book_room`, `free_rooms`, `free_slots(room_id, start, end)`). Invalid input or unknown ids raise `ValueError`. A conflict or double cancel raises `ConflictError`. The `bisect` module keeps each room's bookings sorted by start.
+
+</div>
+
 ## Follow-ups
 
 - Recurring meetings? (Expand them into occurrences, and either book all or none, the same all-or-nothing idea as seat holds.)

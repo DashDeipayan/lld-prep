@@ -24,14 +24,14 @@ Build the booking core of BookMyShow. Read the walkthrough lesson first. It expl
 
 ## Errors
 
-| Situation | Java | Go |
-|---|---|---|
-| unknown theatre/screen/movie/show/seat, invalid input | `IllegalArgumentException` | `ErrNotFound` / `ErrInvalid` |
-| show overlap | `IllegalStateException` | `ErrOverlap` |
-| seat unavailable | `SeatUnavailableException` | `ErrSeatUnavailable` |
-| hold not active | `IllegalStateException` | `ErrHoldNotActive` |
-| payment failed | `PaymentFailedException` | `ErrPaymentFailed` |
-| show already started (hold/cancel), double cancel | `IllegalStateException` | `ErrShowStarted` / `ErrInvalid` |
+| Situation | Java | Go | Python |
+|---|---|---|---|
+| unknown theatre/screen/movie/show/seat, invalid input | `IllegalArgumentException` | `ErrNotFound` / `ErrInvalid` | `ValueError` |
+| show overlap | `IllegalStateException` | `ErrOverlap` | `BookingStateError` |
+| seat unavailable | `SeatUnavailableException` | `ErrSeatUnavailable` | `SeatUnavailableError` |
+| hold not active | `IllegalStateException` | `ErrHoldNotActive` | `HoldNotActiveError` |
+| payment failed | `PaymentFailedException` | `ErrPaymentFailed` | `PaymentFailedError` |
+| show already started (hold/cancel), double cancel | `IllegalStateException` | `ErrShowStarted` / `ErrInvalid` | `BookingStateError` |
 
 <div class="lang-note" data-lang="java">
 
@@ -42,5 +42,11 @@ Provided: `interface PaymentGateway { boolean charge(String user, long amount); 
 <div class="lang-note" data-lang="go">
 
 Provided: `type PaymentGateway interface { Charge(user string, amount int64) bool }`, `type Booking struct { ID, ShowID, User string; Seats []string; Amount int64; Status string }`. `NewBookingService(gw PaymentGateway, clock func() time.Time, holdTTL time.Duration)`. Times are `time.Time`, duration in `time.Duration`. Methods mirror Java with Go errors: `AddTheatre`, `AddScreen`, `AddMovie(id, title string, minutes int)`, `AddShow(movieID, screenID string, start time.Time, regular, premium int64) (string, error)`, `FindShows`, `AvailableSeats`, `Hold`, `Confirm`, `Cancel`.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+Provided: the `PaymentGateway` abstract base class (`charge(user, amount) -> bool`), the `Booking(id, show_id, user, seats, amount, status)` dataclass, and the error classes in the table above. The clock is a zero-argument callable returning milliseconds. Constructor: `BookingService(gateway, clock, hold_ttl_ms)`. Methods are snake_case: `add_theatre`, `add_screen`, `add_movie`, `add_show(movie_id, screen_id, start_ms, regular_price, premium_price)`, `find_shows`, `available_seats`, `hold`, `confirm`, `cancel`.
 
 </div>

@@ -18,7 +18,7 @@ Invalid input (unknown seat, an empty list, the same seat listed twice) fails wi
 
 ## The concurrency test
 
-64 threads/goroutines start at the same instant, each trying to hold 3 of 12 seats chosen from overlapping sets. When they finish, **no seat may belong to two successful holds**, and every successful hold's seats must read as HELD.
+64 threads (goroutines in Go) start at the same instant, each trying to hold 3 of 12 seats chosen from overlapping sets. When they finish, **no seat may belong to two successful holds**, and every successful hold's seats must read as HELD.
 
 <div class="lang-note" data-lang="java">
 
@@ -29,6 +29,12 @@ Java: `Clock` is `long nowMillis()`, TTL is in millis. Errors: `SeatUnavailableE
 <div class="lang-note" data-lang="go">
 
 Go: `NewSeatInventory(seatIDs []string, ttl time.Duration, clock func() time.Time) *SeatInventory`. `Hold(user string, seats []string) (string, error)`, `Confirm(id) error`, `Release(id) error`, `Status(seat) string`, `Available() []string`. Errors: `ErrSeatUnavailable`, `ErrUnknownSeat` (also used for empty or duplicate lists), `ErrHoldNotActive`.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+Python: `SeatInventory(seat_ids, hold_ttl_ms, clock)` where `clock` is a zero-argument callable returning milliseconds. Methods: `hold(user_id, seat_ids)`, `confirm(hold_id)`, `release(hold_id)`, `status(seat_id)` and `available()`. Errors: `SeatUnavailableError` and `HoldNotActiveError` (both provided), and `ValueError` for invalid or unknown seats.
 
 </div>
 

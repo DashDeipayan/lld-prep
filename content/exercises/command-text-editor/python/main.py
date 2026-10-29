@@ -1,0 +1,15 @@
+from solution import TextEditor
+
+ed = TextEditor(100)
+ed.insert(0, "hello")
+ed.insert(5, " world")
+ed.delete(0, 6)
+print(repr(ed.text()))
+ed.undo()
+print("undo  ->", repr(ed.text()))
+ed.undo()
+print("undo  ->", repr(ed.text()))
+ed.redo()
+print("redo  ->", repr(ed.text()))
+ed.insert(11, "!")
+print("edit  ->", repr(ed.text()), ", redo possible?", ed.redo())

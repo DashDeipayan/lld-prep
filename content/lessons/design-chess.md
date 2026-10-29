@@ -124,6 +124,37 @@ func (p slider) CandidateMoves(b *Board, from Square) []Square {
 }
 ```
 
+```python
+class Piece(ABC):
+    def __init__(self, color: Color) -> None:
+        self.color = color
+
+    @abstractmethod
+    def candidate_moves(self, board: Board, src: Square) -> List[Square]: ...
+
+    def _slide(self, board: Board, src: Square, dirs) -> List[Square]:
+        out = []
+        for df, dr in dirs:
+            sq = src.offset(df, dr)
+            while sq is not None:  # None = off the board
+                other = board.piece_at(sq)
+                if other is None:
+                    out.append(sq)
+                else:
+                    if other.color is not self.color:
+                        out.append(sq)  # capture, then stop
+                    break
+                sq = sq.offset(df, dr)
+        return out
+
+
+class Rook(Piece):
+    DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+    def candidate_moves(self, board, src):
+        return self._slide(board, src, self.DIRS)
+```
+
 **King** = the queen's directions with a range of 1. **Knight** = 8 fixed offsets with no blocking. **Pawn** is the odd one out: it moves forward without capturing, captures diagonally, has a double step from its start rank, and its direction depends on colour.
 
 ## Check, checkmate, stalemate

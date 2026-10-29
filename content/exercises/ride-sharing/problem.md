@@ -43,3 +43,9 @@ Provided: `enum VehicleClass { MINI, SEDAN, SUV }`, `enum TripStatus { ASSIGNED,
 Provided: `VehicleClass` (`Mini`, `Sedan`, `SUV`), `TripStatus` (`Assigned`, `Arrived`, `InProgress`, `Completed`, `Cancelled`), `Location{X, Y}` with `Distance`, `DriverInfo`, `Rate`, `MatchingStrategy { Match(pickup Location, cands []DriverInfo) (string, bool) }`, `PricingStrategy { Fare(cls VehicleClass, distance int, d time.Duration) int64 }`. `NewNearestDriver(maxDistance int)`, `NewStandardPricing(rates map[VehicleClass]Rate, surgePercent int64)`, `NewRideService(m, p, clock func() time.Time)`. Errors: `ErrNotFound`, `ErrNoDriver`, `ErrIllegalTransition`, `ErrRiderBusy`, `ErrDriverBusy`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Provided: the `VehicleClass` and `TripStatus` enums, the `Location(x, y)` dataclass with `distance(other)`, the `DriverInfo(id, cls, location, rating)` and `Rate(base, per_km, per_min)` dataclasses, the `MatchingStrategy` abstract base class (`match(pickup, candidates)`, which returns a driver id or `None`) and `PricingStrategy` (`fare(cls, distance, duration_ms)`), plus `NoDriverAvailableError` and `RideStateError`. The clock returns milliseconds. Use `RideService(matching, pricing, clock)` with `request_ride(rider_id, src, dst, cls)` and the other methods in snake_case. Unknown ids raise `ValueError`. Illegal transitions, a busy rider, or going offline mid-trip raise `RideStateError`.
+
+</div>

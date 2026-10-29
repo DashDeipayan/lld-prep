@@ -1,5 +1,5 @@
 // Package runner compiles and executes user code with the locally installed
-// JDK and Go toolchains, and collects structured test results.
+// JDK, Go and Python toolchains, and collects structured test results.
 package runner
 
 import (
@@ -22,19 +22,25 @@ var javaTestRunner []byte
 //go:embed assets/guard_test.go.txt
 var goGuard []byte
 
+//go:embed assets/test_runner.py
+var pyTestRunner []byte
+
+//go:embed assets/lldtest.py
+var pyAsserts []byte
+
 // Mode selects what is executed after compilation.
 type Mode string
 
 const (
-	ModeRun  Mode = "run"  // run the driver (Main.java / main.go) and show stdout
+	ModeRun  Mode = "run"  // run the driver (Main.java / main.go / main.py) and show stdout
 	ModeTest Mode = "test" // run the hidden test-suite
 )
 
 // Job describes one execution request.
 type Job struct {
-	Lang string // "java" or "go"
+	Lang string // "java", "go" or "python"
 	Mode Mode
-	// UserCode replaces the starter file (Solution.java / solution.go).
+	// UserCode replaces the starter file (Solution.java / solution.go / solution.py).
 	UserCode string
 	// Files are the support files for the language (driver, tests, ...),
 	// keyed by file name. The user file is added by the runner.
@@ -64,8 +70,11 @@ type Result struct {
 
 // UserFileName returns the name of the editable file for a language.
 func UserFileName(lang string) string {
-	if lang == "go" {
+	switch lang {
+	case "go":
 		return "solution.go"
+	case "python":
+		return "solution.py"
 	}
 	return "Solution.java"
 }
@@ -81,6 +90,8 @@ func Execute(ctx context.Context, job Job) Result {
 		res = runJava(ctx, job)
 	case "go":
 		res = runGo(ctx, job)
+	case "python":
+		res = runPython(ctx, job)
 	default:
 		res = Result{Status: "runtime_error", Stderr: "unsupported language " + job.Lang}
 	}
@@ -236,8 +247,84 @@ func runGo(parent context.Context, job Job) Result {
 	return finishTests(tests, plain, cleanGoPaths(serr, dir), err, to)
 }
 
+// pythonExe is python3, or python where only that exists (Windows).
+func pythonExe() (string, bool) {
+	for _, name := range []string{"python3", "python"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p, true
+		}
+	}
+	return "", false
+}
+
+// pySyntaxCheck compiles solution.py without running it, so syntax errors are
+// reported as compile errors rather than as a crash.
+const pySyntaxCheck = `import sys, traceback
+try:
+    compile(open("solution.py", encoding="utf-8").read(), "solution.py", "exec")
+except SyntaxError as e:
+    sys.stderr.write("".join(traceback.format_exception_only(type(e), e)))
+    sys.exit(1)
+`
+
+func runPython(parent context.Context, job Job) Result {
+	py, ok := pythonExe()
+	if !ok {
+		return Result{Status: "toolchain_missing", Stderr: "python3 not found on PATH. Install Python 3.8+ to run Python code."}
+	}
+	if job.Mode == ModeTest {
+		job.Files = withFile(withFile(job.Files, "test_runner.py", pyTestRunner), "lldtest.py", pyAsserts)
+	} else {
+		files := map[string][]byte{}
+		for k, v := range job.Files {
+			if k != "tests.py" {
+				files[k] = v
+			}
+		}
+		job.Files = files
+	}
+	dir, err := workspace(job)
+	defer os.RemoveAll(dir)
+	if err != nil {
+		return Result{Status: "runtime_error", Stderr: err.Error()}
+	}
+	ctx, cancel := context.WithTimeout(parent, timeoutOf(job))
+	defer cancel()
+	// -E -s: ignore PYTHON* variables and user site-packages; -B: no .pyc files.
+	flags := []string{"-E", "-s", "-B", "-X", "utf8"}
+
+	_, cerr, err, to := command(ctx, dir, nil, py, append(flags, "-c", pySyntaxCheck)...)
+	if to {
+		return Result{Status: "timeout", Stderr: "syntax check timed out"}
+	}
+	if err != nil {
+		return Result{Status: "compile_error", Stderr: cleanPaths(cerr, dir)}
+	}
+
+	if job.Mode == ModeRun {
+		out, serr, err, to := command(ctx, dir, nil, py, append(flags, "main.py")...)
+		return finishRun(out, cleanPaths(serr, dir), err, to)
+	}
+	filter := job.TestFilter
+	if filter == "" {
+		filter = "^test"
+	}
+	out, serr, err, to := command(ctx, dir, nil, py, append(flags, "test_runner.py", filter)...)
+	tests, plain := parseMarkers(out)
+	return finishTests(tests, plain, cleanPaths(serr, dir), err, to)
+}
+
 func isGoBuildFailure(stderr string) bool {
 	return strings.Contains(stderr, ".go:") && !strings.Contains(stderr, "panic:") && !strings.Contains(stderr, "goroutine ")
+}
+
+// cleanPaths strips the temporary directory from compiler and runtime output,
+// under its real path too (on macOS /var is a symlink to /private/var).
+func cleanPaths(s, dir string) string {
+	if real, err := filepath.EvalSymlinks(dir); err == nil && real != dir {
+		s = cleanGoPaths(s, real)
+	}
+	return cleanGoPaths(s, dir)
 }
 
 func cleanGoPaths(s, dir string) string {
@@ -386,6 +473,11 @@ func Toolchains() map[string]string {
 	}
 	if o, err := exec.Command("go", "version").CombinedOutput(); err == nil {
 		out["go"] = strings.TrimSpace(string(o))
+	}
+	if py, ok := pythonExe(); ok {
+		if o, err := exec.Command(py, "--version").CombinedOutput(); err == nil {
+			out["python"] = strings.TrimSpace(string(o))
+		}
 	}
 	return out
 }

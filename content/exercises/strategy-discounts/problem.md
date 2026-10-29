@@ -35,3 +35,9 @@ Cart: 3 × `BOOK` at 500, 1 × `PEN` at 100 → subtotal **1600**
 In Go, use constructor functions (`NewPercentageOff`, …) that return the `DiscountStrategy` interface, and `NewCheckout(strategies ...DiscountStrategy)`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+In Python, `DiscountStrategy` is an abstract base class with one method, `discount(cart)`. Build `Checkout(strategies)` from a list. Method and argument names are snake_case: `FlatOff(amount, min_subtotal)`, `cart.add(sku, unit_price, qty)`.
+
+</div>

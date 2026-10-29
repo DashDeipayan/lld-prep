@@ -20,7 +20,7 @@ Implement a `Notifier` abstraction with three implementations:
 
 `NotificationService` is constructed with any list of notifiers. `notify(user, message)`:
 
-- rejects a blank message (Java: `IllegalArgumentException`, Go: `ErrEmptyMessage`)
+- rejects a blank message (Java: `IllegalArgumentException`, Go: `ErrEmptyMessage`, Python: `ValueError`)
 - skips notifiers whose channel the user has **muted**, or that **can't reach** the user
 - tries every remaining notifier **in order**. A notifier that throws or returns an error is skipped, and the rest still run
 - returns the **number of successful sends**
@@ -32,5 +32,11 @@ Implement a `Notifier` abstraction with three implementations:
 <div class="lang-note" data-lang="go">
 
 Go signatures: `NewEmailNotifier(o *Outbox) Notifier` (likewise `NewSmsNotifier`, `NewPushNotifier`), `NewNotificationService(ns ...Notifier) *NotificationService`, and `(*NotificationService).Notify(u User, msg string) (int, error)`. `Notifier.Send` returns an `error`.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+Python names: `Notifier` is an abstract base class with `channel()`, `can_reach(user)` and `send(user, message)`. `NotificationService(notifiers).notify(user, message)` returns the count and raises `ValueError` for a blank message. `User` is a frozen dataclass with `email`, `phone`, `device_token` (any may be `None`) and `muted`, a `frozenset`.
 
 </div>

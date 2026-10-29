@@ -15,7 +15,7 @@ Checkout supports card, UPI and wallet, and finance wants to add BNPL next quart
 - `register(method, constructor)`: method names are **case-insensitive**. Registering the same name twice is an error.
 - `create(method)` returns a **new** processor instance each call. An unknown method is an error.
 - `supportedMethods()` returns the registered names, lower-case and **sorted**.
-- `PaymentFactory.withDefaults()` / `NewDefaultFactory()` returns a factory with the three processors above already registered.
+- `PaymentFactory.withDefaults()` / `NewDefaultFactory()` / `PaymentFactory.with_defaults()` returns a factory with the three processors above already registered.
 
 <div class="lang-note" data-lang="java">
 
@@ -26,6 +26,12 @@ Errors: duplicate register throws `IllegalStateException`. Unknown method or `am
 <div class="lang-note" data-lang="go">
 
 `NewPaymentFactory() *PaymentFactory`, `Register(method string, ctor func() PaymentProcessor) error`, `Create(method string) (PaymentProcessor, error)`, `SupportedMethods() []string`, `NewDefaultFactory() *PaymentFactory`. Errors: `ErrDuplicateMethod`, `ErrUnsupportedMethod`, `ErrInvalidAmount`.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+`register(method, ctor)` takes any zero-argument callable, usually the class itself (`f.register("card", CardProcessor)`). Then `create(method)`, `supported_methods()` and `PaymentFactory.with_defaults()`. Errors: a duplicate registration raises `DuplicateMethodError`, an unknown method raises `UnsupportedMethodError` (both are provided), and `amount <= 0` raises `ValueError`.
 
 </div>
 

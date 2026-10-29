@@ -8,7 +8,7 @@
 | `subscribe(auctionId, listener)` | the listener receives every event for that auction, in order |
 | `placeBid(auctionId, bidder, amount)` | see the rules below |
 | `leader(id)`, `highest(id)` (0 if no bids), `endTime(id)` | queries |
-| `close(id)` → `Result(id, winner, price)` | only once `now ≥ end`. Unsold → `winner = null`/`""`, `price = 0`. Calling it again returns the **same** result and emits nothing |
+| `close(id)` → `Result(id, winner, price)` | only once `now ≥ end`. Unsold → `winner = null`/`""`/`None`, `price = 0`. Calling it again returns the **same** result and emits nothing |
 
 ## Bid rules (in this order)
 
@@ -37,5 +37,11 @@ Provided: `interface Clock { long nowMillis(); }`, `interface AuctionListener { 
 <div class="lang-note" data-lang="go">
 
 Provided: `AuctionListener` interface, `ListenerFunc`, `Result{AuctionID, Winner string; Price int64}`. `NewAuctionHouse(clock func() time.Time)`. Times are `time.Time`. Errors: `ErrInvalid`, `ErrNotFound`, `ErrClosed`, `ErrAlreadyLeading`, `ErrBidTooLow`, `ErrNotEnded`.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+Provided: the clock is a zero-argument callable returning milliseconds, a listener is any callable `(auction_id, event)`, and there's a frozen `Result(auction_id, winner, price)` dataclass, `BidRejectedError` (with `.reason` set to `"CLOSED"`, `"LEADING"` or `"TOO_LOW"`) and `AuctionNotEndedError` for an early close. A seller bid or unknown id raises `ValueError`. `leader` returns a name or `None`. Methods are snake_case: `place_bid`, `end_time`.
 
 </div>

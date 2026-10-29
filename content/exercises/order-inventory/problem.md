@@ -40,3 +40,9 @@ Provided: `record OrderLine(String sku, int qty)`, `enum OrderStatus { CREATED, 
 Provided: `OrderLine{SKU string; Qty int}`, `OrderStatus` (`Created`, `Paid`, `Shipped`, `Delivered`, `Cancelled`), `PaymentGateway { Charge(orderID string, amount int64) bool; Refund(orderID string, amount int64) }`. `NewOrderService(gw)`. Errors: `ErrInvalid`, `ErrNotFound`, `ErrOutOfStock`, `ErrPaymentFailed`, `ErrIllegalTransition`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Provided: the `OrderLine(sku, qty)` dataclass, the `OrderStatus` enum, the `PaymentGateway` abstract base class (`charge(order_id, amount) -> bool`, `refund(order_id, amount)`), plus `OutOfStockError`, `PaymentFailedError` and `IllegalTransitionError`. Use `OrderService(gateway)` with snake_case methods (`add_product`, `place_order`, `orders_of`, ...). Invalid input or unknown SKU/order raises `ValueError`.
+
+</div>

@@ -1,16 +1,17 @@
 // Markdown → HTML with LLD-specific extensions:
-//  * adjacent ```java / ```go fences become one tabbed block (follows the global language)
+//  * adjacent ```java / ```go / ```python fences become one tabbed block (follows the global
+//    language; a block without the current language shows its first tab)
 //  * ```mermaid fences render as diagrams
 //  * <div class="lang-note" data-lang="go"> blocks show only for that language
 //  * h2/h3 get ids so sections can be linked and bookmarked
 import { marked } from 'marked';
 import { loadMonaco } from './editor.js';
+import { LANGS, langLabel } from './langs.js';
 
 marked.use({ gfm: true });
 
 export const slug = (s) => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-const LANGS = ['java', 'go'];
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function renderMarkdown(src) {
@@ -19,7 +20,7 @@ export function renderMarkdown(src) {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     if (t.type === 'code' && LANGS.includes(t.lang)) {
-      // Collect a run of java/go fences separated only by whitespace.
+      // Collect a run of java/go/python fences separated only by whitespace.
       const group = [t];
       let j = i + 1;
       while (j < tokens.length) {
@@ -53,10 +54,12 @@ export function renderMarkdown(src) {
 
 function codeGroup(group) {
   const tabs = group.length > 1
-    ? `<div class="code-tabs">${group.map((g) => `<button type="button" data-lang-tab="${g.lang}">${g.lang === 'go' ? 'Go' : 'Java'}</button>`).join('')}</div>`
-    : `<div class="code-tabs single"><span>${group[0].lang === 'go' ? 'Go' : 'Java'}</span></div>`;
+    ? `<div class="code-tabs">${group.map((g) => `<button type="button" data-lang-tab="${g.lang}">${langLabel(g.lang)}</button>`).join('')}</div>`
+    : `<div class="code-tabs single"><span>${langLabel(group[0].lang)}</span></div>`;
   const bodies = group.map((g) => `<pre class="code" data-lang-body="${g.lang}"><code data-lang="${g.lang}">${esc(g.text)}</code></pre>`).join('');
-  return `<div class="code-group${group.length > 1 ? ' multi' : ''}">${tabs}<button type="button" class="copy-btn" title="Copy">Copy</button>${bodies}</div>`;
+  // "no-python" etc. lets CSS fall back to the first tab when the chosen language is missing.
+  const missing = LANGS.filter((l) => !group.some((g) => g.lang === l)).map((l) => ' no-' + l).join('');
+  return `<div class="code-group${group.length > 1 ? ' multi' + missing : ''}">${tabs}<button type="button" class="copy-btn" title="Copy">Copy</button>${bodies}</div>`;
 }
 
 let mermaidReady = false;

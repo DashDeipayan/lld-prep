@@ -42,6 +42,7 @@ func main() {
 	dev := flag.Bool("dev", false, "serve web/ and content/ from disk (live edits)")
 	verify := flag.Bool("verify", false, "run every reference solution against its tests and exit")
 	only := flag.String("only", "", "with -verify: only units whose id contains this")
+	onlyLang := flag.String("lang", "", "with -verify: only this language (java, go or python)")
 	noOpen := flag.Bool("no-open", false, "do not open the browser")
 	password := flag.String("password", os.Getenv("LLDPREP_PASSWORD"), "require this password (HTTP basic auth); defaults to $LLDPREP_PASSWORD")
 	mongoURI := flag.String("mongo", os.Getenv("MONGODB_URI"), "MongoDB URI: enables sign-in and per-user progress; defaults to $MONGODB_URI")
@@ -66,7 +67,7 @@ func main() {
 		log.Fatalf("loading content: %v", err)
 	}
 	if *verify {
-		os.Exit(runVerify(cs, *only))
+		os.Exit(runVerify(cs, *only, *onlyLang))
 	}
 
 	au := &auth{inviteCode: *invite, limiter: newLoginLimiter()}
@@ -115,7 +116,7 @@ func main() {
 	url := "http://" + ln.Addr().String()
 	tc := runner.Toolchains()
 	log.Printf("LLD Prep running at %s", url)
-	log.Printf("toolchains: java=%q go=%q", tc["java"], tc["go"])
+	log.Printf("toolchains: java=%q go=%q python=%q", tc["java"], tc["go"], tc["python"])
 	if !*noOpen {
 		go openBrowser(url)
 	}
@@ -462,7 +463,7 @@ func httpError(w http.ResponseWriter, err error) {
 
 // runVerify checks that every reference solution compiles and passes all
 // tests, and that every starter at least compiles. Exit code 1 on failure.
-func runVerify(cs *content.Store, only string) int {
+func runVerify(cs *content.Store, only, onlyLang string) int {
 	type unit struct {
 		name  string
 		cu    *content.CodeUnit
@@ -481,7 +482,15 @@ func runVerify(cs *content.Store, only string) int {
 		if only != "" && !strings.Contains(u.name, only) {
 			continue
 		}
-		for _, lang := range []string{"java", "go"} {
+		for _, lang := range content.Langs {
+			if onlyLang != "" && lang != onlyLang {
+				continue
+			}
+			if _, ok := u.cu.Starter[lang]; !ok {
+				fmt.Printf("FAIL %-40s %-6s missing (no %s/ folder)\n", u.name, lang, lang)
+				failed++
+				continue
+			}
 			ctx := context.Background()
 			filter := ""
 			if u.steps > 0 {
@@ -496,7 +505,7 @@ func runVerify(cs *content.Store, only string) int {
 				mark = "FAIL"
 				failed++
 			}
-			fmt.Printf("%s %-40s %-4s ref=%s run=%s starter=%s\n", mark, u.name, lang, ref.Describe(), run.Status, starter.Describe())
+			fmt.Printf("%s %-40s %-6s ref=%s run=%s starter=%s\n", mark, u.name, lang, ref.Describe(), run.Status, starter.Describe())
 			if !ok {
 				for _, t := range ref.Tests {
 					if !t.Passed {

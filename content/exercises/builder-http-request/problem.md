@@ -28,6 +28,16 @@ Errors (use `errors.Is`): `ErrInvalidURL`, `ErrInvalidMethod`, `ErrInvalidTimeou
 
 </div>
 
+<div class="lang-note" data-lang="python">
+
+**Python API:** `HttpRequest.builder(url)` returns a `Builder` with chainable `method(str)`, `header(name, value)`, `timeout_ms(int)`, `body(str)`, and `build()`.
+The request exposes read-only properties: `method`, `url`, `headers` (a read-only mapping, so writing to it raises `TypeError`), `timeout_ms`, `body`.
+Errors: an invalid method or timeout raises `ValueError` **from the setter**. A bad URL or a body on GET/DELETE raises `ValueError` **from `build()`**.
+
+In everyday Python you'd often use keyword arguments with defaults instead of a builder (`HttpRequest(url, method="POST", ...)`). Mention that trade-off if asked, but the builder is what this exercise tests.
+
+</div>
+
 ## What the interviewer is looking for
 
 - Defaults set in exactly one place.

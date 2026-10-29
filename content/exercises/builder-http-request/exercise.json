@@ -1,13 +1,14 @@
 {
   "title": "Immutable HTTP Request (Builder / Functional Options)",
   "difficulty": "easy",
-  "summary": "Build a validated, immutable request object with a Java Builder or Go functional options.",
+  "summary": "Build a validated, immutable request object with a Builder (Java, Python) or Go functional options.",
   "minutes": 35,
   "tags": ["builder", "functional-options", "immutability", "validation"],
   "hints": [
     "Java: the private constructor takes the Builder and copies everything with `Map.copyOf`, so later builder calls can't leak into a built request.",
     "Validate per-field rules (method, timeout) as soon as they're set. Validate cross-field rules (a GET can't have a body) in `build()`.",
     "Normalise header names with `toLowerCase()` when storing, so `Content-Type` and `content-type` are the same header.",
-    "Go: make `Option` a `func(*Request) error` so options can reject bad values. `NewRequest` applies options in order and returns the first error."
+    "Go: make `Option` a `func(*Request) error` so options can reject bad values. `NewRequest` applies options in order and returns the first error.",
+    "Python: copy the headers into a new `dict` and wrap it in `types.MappingProxyType` for a read-only view. Expose fields as `@property`s with no setters, and `__slots__` stops new attributes being added."
   ]
 }

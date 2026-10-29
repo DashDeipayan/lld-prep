@@ -5,7 +5,7 @@
   "minutes": 35,
   "tags": ["factory", "registry", "open-closed"],
   "hints": [
-    "Store constructors, not instances: `Map<String, Supplier<PaymentProcessor>>` in Java, `map[string]func() PaymentProcessor` in Go.",
+    "Store constructors, not instances: `Map<String, Supplier<PaymentProcessor>>` in Java, `map[string]func() PaymentProcessor` in Go, a `dict` of classes in Python (a class is already a zero-argument callable).",
     "Normalise keys with lower-case on both `register` and `create`.",
     "`create` must return a **fresh** instance each call. That's why you store a supplier.",
     "Fees use integer maths: card is `amount * 2 / 100`, wallet is `amount / 100`, UPI is 0."

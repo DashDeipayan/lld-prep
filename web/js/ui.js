@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import htm from 'htm';
 import { getState, subscribe, update, isBookmarked, toggleBookmark } from './state.js';
 import { renderMarkdown, enhance } from './markdown.js';
+import { LANGS, langLabel } from './langs.js';
 
 export const html = htm.bind(h);
 
@@ -111,8 +112,8 @@ export function BookmarkButton({ bkey, type, id, title, anchor, label, compact }
 
 export function LangToggle({ lang, onChange }) {
   return html`<div class="seg" role="group" aria-label="Language">
-    ${['java', 'go'].map((l) => html`<button type="button" class=${lang === l ? 'on' : ''} aria-pressed=${lang === l}
-      onClick=${() => onChange(l)}>${l === 'go' ? 'Go' : 'Java'}</button>`)}
+    ${LANGS.map((l) => html`<button type="button" class=${lang === l ? 'on' : ''} aria-pressed=${lang === l}
+      onClick=${() => onChange(l)}>${langLabel(l)}</button>`)}
   </div>`;
 }
 

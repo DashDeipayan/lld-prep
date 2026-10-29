@@ -33,3 +33,9 @@ Java: `record Txn(String id, String from, String to, long amount)` is provided. 
 Go: `type Txn struct{ ID, From, To string; Amount int64 }`. `NewWallet()`, `OpenAccount(id) error`, `Deposit(id string, amt int64) (string, error)`, `Transfer(key, from, to string, amt int64) (string, error)`, `Balance(id) (int64, error)`, `History(id) ([]Txn, error)`. Errors: `ErrUnknownAccount`, `ErrDuplicateAccount`, `ErrInvalidAmount`, `ErrSameAccount`, `ErrInsufficientFunds`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: the `Txn(id, sender, receiver, amount)` dataclass is provided (`from` is a keyword in Python) along with `InsufficientFundsError`. Use `Wallet()` with `open_account`, `deposit`, `transfer(idempotency_key, sender, receiver, amount)`, `balance` and `history`. Every other error raises `ValueError`. A failed idempotent call re-raises the **same** exception on retry. For concurrent retries of one key, let the first caller run and have the others wait on a `threading.Event` until its outcome is stored. Take the two account locks in a fixed order, for example sorted by id.
+
+</div>

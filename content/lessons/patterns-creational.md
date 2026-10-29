@@ -1,6 +1,6 @@
 ---
 title: Creational Patterns That Show Up in LLD Rounds
-summary: Factory, Builder and Singleton, plus when interviewers expect them, when they're a red flag, and how each looks in idiomatic Go.
+summary: Factory, Builder and Singleton, plus when interviewers expect them, when they're a red flag, and how each looks in idiomatic Go and Python.
 ---
 
 Creational patterns answer one question: **who decides which concrete object gets built, and how?** In interviews, three come up all the time. Prototype and Abstract Factory almost never get past a one-line mention.
@@ -64,9 +64,39 @@ func (f *PaymentFactory) Create(method string) (PaymentProcessor, error) {
 }
 ```
 
+```python
+class PaymentProcessor(ABC):
+    @abstractmethod
+    def pay(self, amount_cents: int) -> Receipt: ...
+
+
+class PaymentFactory:
+    def __init__(self) -> None:
+        self._registry: Dict[str, Callable[[], PaymentProcessor]] = {}
+
+    def register(self, method: str, ctor: Callable[[], PaymentProcessor]) -> None:
+        if method in self._registry:
+            raise DuplicateMethodError("duplicate method " + method)
+        self._registry[method] = ctor
+
+    def create(self, method: str) -> PaymentProcessor:
+        ctor = self._registry.get(method)
+        if ctor is None:
+            raise UnsupportedMethodError("unsupported method " + method)
+        return ctor()
+
+# startup: factory.register("UPI", UpiProcessor)   # a class is already a zero-argument callable
+```
+
 <div class="lang-note" data-lang="go">
 
 **Go idiom:** most "factories" in Go are just **constructor functions** that return an interface: `func NewUPI(cfg Config) PaymentProcessor`. Only build a registry when the set of types is open-ended. That's how `database/sql` drivers and `image` format decoders work, which is a good example to name in an interview.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+**Python idiom:** classes are callables, so a registry is just a `dict` from name to class: `registry["upi"] = UpiProcessor`, then `registry[name]()`. A small decorator can make plugins register themselves (`@register("upi")` above the class), which is a neat Open/Closed point to make. For a fixed, small set of types, a plain `if`/`dict` lookup inside one function is fine. Don't over-build.
 
 </div>
 
@@ -132,6 +162,29 @@ func NewRequest(url string, opts ...Option) (*Request, error) {
 }
 ```
 
+<div class="lang-note" data-lang="python">
+
+In Python, keyword arguments with defaults already solve the "many optional parameters" problem, and a frozen dataclass makes the result immutable. Validate in `__post_init__`. Use an explicit builder (as in the exercise) only when an object is assembled step by step.
+
+```python
+@dataclass(frozen=True)
+class HttpRequest:
+    url: str
+    method: str = "GET"
+    headers: Mapping[str, str] = field(default_factory=dict)
+    timeout: timedelta = timedelta(seconds=30)
+
+    def __post_init__(self) -> None:
+        if not self.url:
+            raise ValueError("url required")
+        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))  # defensive, read-only copy
+
+
+req = HttpRequest("https://api.example.com", method="POST", headers={"x-id": "1"})
+```
+
+</div>
+
 **Say:** *"Builder keeps the object immutable and puts validation in one place, in `build()`. Telescoping constructors with nulls are error-prone."*
 
 ## Singleton: know it, mostly avoid it
@@ -181,6 +234,26 @@ func GetIDGenerator() *IDGenerator {
 type IDGenerator struct{ next atomic.Int64 }
 
 func (g *IDGenerator) NextID() int64 { return g.next.Add(1) }
+```
+
+```python
+# 1. The most Pythonic singleton is a module: modules are imported once and cached,
+#    so a module-level instance is shared by everyone who imports it.
+id_generator = IdGenerator()
+
+
+# 2. If it must be lazy, use double-checked locking with a lock.
+class Config:
+    _instance = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def get(cls) -> "Config":
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
 ```
 
 ### Why it's usually a red flag

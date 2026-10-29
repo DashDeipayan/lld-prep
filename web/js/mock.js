@@ -5,6 +5,7 @@ import { update, markDone, getState } from './state.js';
 import { html, useAppState, useAsync, Icon, Markdown, Loading, ErrorBox, Difficulty, fmtMin, go } from './ui.js';
 import { Workbench, Results } from './code.js';
 import { plan, locate } from './app.js';
+import { langLabel } from './langs.js';
 
 const SCALE = [
   [1, 'Weak'],
@@ -50,7 +51,7 @@ export function MocksView() {
       <table class="table"><thead><tr><th>Mock</th><th>Date</th><th>Lang</th><th>Time used</th><th>Tests</th><th>Score</th></tr></thead>
       <tbody>${s.mocks.filter((a) => a.score != null).slice().reverse().map((a) => html`<tr>
         <td>${P.mocks.find((m) => m.id === a.id)?.title || a.id}</td>
-        <td>${new Date(a.startedAt).toLocaleString()}</td><td>${a.lang === 'go' ? 'Go' : 'Java'}</td>
+        <td>${new Date(a.startedAt).toLocaleString()}</td><td>${langLabel(a.lang)}</td>
         <td>${Math.round((a.endedAt - a.startedAt) / 60000)} min</td>
         <td>${a.tests ? `${a.tests.passed}/${a.tests.total}` : '–'}</td><td><b>${a.score}%</b></td></tr>`)}</tbody></table>
     </section>` : null}
@@ -107,7 +108,7 @@ export function MockView({ id }) {
           <li>The full problem statement appears when you start. Hints and the reference solution are hidden.</li>
           <li>The timer keeps running if you leave the page. Finish whenever you want, and overtime is recorded.</li>
           <li>When you finish, the hidden tests run and you score yourself on ${P.rubric.length} interviewer criteria.</li>
-          <li>Language: <b>${s.lang === 'go' ? 'Go' : 'Java'}</b> (change it in the top bar before you start).</li>
+          <li>Language: <b>${langLabel(s.lang)}</b> (change it in the top bar before you start).</li>
         </ul>
         <button class="btn primary lg" onClick=${start}><${Icon} name="timer" size=${16} /> Start the clock</button>
       </section>

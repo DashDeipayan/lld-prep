@@ -16,6 +16,22 @@ void selectProduct(String code) { /* the same 4-way if-chain again */ }
 void cancel() { /* and again */ }
 ```
 
+```python
+def insert_coin(self, c: int) -> None:
+    if self.state == IDLE:
+        ...
+        self.state = HAS_MONEY
+    elif self.state == HAS_MONEY:
+        ...
+    elif self.state == DISPENSING:
+        raise ...
+    elif self.state == OUT_OF_STOCK:
+        self.refund(c)
+
+def select_product(self, code: str) -> None: ...  # the same 4-way if-chain again
+def cancel(self) -> None: ...                     # and again
+```
+
 Every operation repeats the same branching on state, and adding a state means editing every method.
 
 ## Two good solutions. Know both
@@ -81,6 +97,30 @@ func (idleState) Select(*VendingMachine, string) (Product, error) { return Produ
 func (idleState) Cancel(*VendingMachine) int                      { return 0 }
 ```
 
+```python
+class State(ABC):
+    @abstractmethod
+    def insert_coin(self, m: VendingMachine, coin: int) -> None: ...
+
+    @abstractmethod
+    def select(self, m: VendingMachine, code: str) -> Product: ...
+
+    @abstractmethod
+    def cancel(self, m: VendingMachine) -> int: ...
+
+
+class IdleState(State):
+    def insert_coin(self, m, coin):
+        m.add_balance(coin)
+        m.set_state(HasMoneyState())
+
+    def select(self, m, code):
+        raise MachineStateError("insert money first")
+
+    def cancel(self, m):
+        return 0
+```
+
 **Use when** states have substantially different behaviour, or there are many states and operations (vending machine, ATM, a game turn).
 
 ### Option B: an enum + a transition table
@@ -128,6 +168,28 @@ func (o *Order) transition(to Status) error {
 	o.status = to
 	return nil
 }
+```
+
+```python
+class OrderStatus(Enum):
+    CREATED = "CREATED"
+    PAID = "PAID"
+    SHIPPED = "SHIPPED"
+    DELIVERED = "DELIVERED"
+    CANCELLED = "CANCELLED"
+
+
+ALLOWED = {
+    OrderStatus.CREATED: {OrderStatus.PAID, OrderStatus.CANCELLED},
+    OrderStatus.PAID: {OrderStatus.SHIPPED, OrderStatus.CANCELLED},
+    OrderStatus.SHIPPED: {OrderStatus.DELIVERED},
+}
+
+
+def transition(self, to: OrderStatus) -> None:
+    if to not in ALLOWED.get(self.status, set()):
+        raise IllegalTransitionError("%s -> %s not allowed" % (self.status.name, to.name))
+    self.status = to
 ```
 
 **Say:** *"The order lifecycle is mostly guarded transitions, so I'll use an enum with a transition table. If states start having very different behaviour, I'd promote them to State classes."* That shows judgement, which scores higher than reaching for the full pattern every time.

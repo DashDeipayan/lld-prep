@@ -117,7 +117,11 @@ type Store struct {
 	index     []doc
 }
 
-var langs = []string{"java", "go"}
+// Langs are the languages code units can be written in. Java and Go are
+// required for every unit; Python is used where a python/ folder exists.
+var Langs = []string{"java", "go", "python"}
+
+var optionalLangs = map[string]bool{"python": true}
 
 // Load reads everything from fsys (rooted at the content directory).
 func Load(fsys fs.FS) (*Store, error) {
@@ -210,9 +214,12 @@ func (s *Store) loadLessons(fsys fs.FS) error {
 
 func loadCodeUnit(fsys fs.FS, dir string) (CodeUnit, error) {
 	cu := CodeUnit{Starter: map[string]string{}, Reference: map[string]string{}, Support: map[string]map[string][]byte{}}
-	for _, lang := range langs {
+	for _, lang := range Langs {
 		ldir := path.Join(dir, lang)
 		entries, err := fs.ReadDir(fsys, ldir)
+		if errors.Is(err, fs.ErrNotExist) && optionalLangs[lang] {
+			continue
+		}
 		if err != nil {
 			return cu, fmt.Errorf("%s: %w", ldir, err)
 		}
@@ -223,9 +230,9 @@ func loadCodeUnit(fsys fs.FS, dir string) (CodeUnit, error) {
 				return cu, err
 			}
 			switch e.Name() {
-			case "Solution.java", "solution.go":
+			case "Solution.java", "solution.go", "solution.py":
 				cu.Starter[lang] = string(b)
-			case "Reference.java", "reference.go.txt":
+			case "Reference.java", "reference.go.txt", "reference.py":
 				cu.Reference[lang] = string(b)
 			default:
 				support[e.Name()] = b

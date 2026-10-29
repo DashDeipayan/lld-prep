@@ -11,7 +11,11 @@ Splitwise, wallets, payments, BookMyShow and food delivery all handle money. Int
 0.1 + 0.2 == 0.30000000000000004   // ✗
 ```
 
-Use **integer minor units** (paise, cents) in a `long` / `int64`, or `BigDecimal` with explicit scale and rounding. In interviews, `long cents` is simplest. Say so, and wrap it in a `Money` value object if time allows:
+```python
+0.1 + 0.2 == 0.30000000000000004  # ✗ True: Python floats are IEEE-754 doubles too
+```
+
+Use **integer minor units** (paise, cents) in a `long` / `int64` / Python `int`, or `BigDecimal` (Python `decimal.Decimal`) with explicit scale and rounding. In interviews, `long cents` is simplest. Say so, and wrap it in a `Money` value object if time allows:
 
 ```java
 record Money(long minor, String currency) {
@@ -21,6 +25,25 @@ record Money(long minor, String currency) {
         if (!currency.equals(o.currency)) throw new IllegalArgumentException("currency mismatch");
     }
 }
+```
+
+```python
+@dataclass(frozen=True)
+class Money:
+    minor: int
+    currency: str
+
+    def __add__(self, other: "Money") -> "Money":
+        self._require_same(other)
+        return Money(self.minor + other.minor, self.currency)
+
+    def __sub__(self, other: "Money") -> "Money":
+        self._require_same(other)
+        return Money(self.minor - other.minor, self.currency)
+
+    def _require_same(self, other: "Money") -> None:
+        if self.currency != other.currency:
+            raise ValueError("currency mismatch")
 ```
 
 ## Rule 2: splitting must add up exactly
@@ -34,6 +57,12 @@ static long[] splitEqually(long total, int n) {
     for (int i = 0; i < n; i++) parts[i] = base + (i < rem ? 1 : 0);   // first `rem` people pay 1 extra
     return parts;                                                       // sum == total, always
 }
+```
+
+```python
+def split_equally(total: int, n: int) -> List[int]:
+    base, rem = divmod(total, n)
+    return [base + (1 if i < rem else 0) for i in range(n)]  # first `rem` people pay 1 extra; sum == total
 ```
 
 Percentage splits have the same problem. Compute each share by flooring, then hand out the leftover units in a deterministic order (by participant order, or by largest fractional remainder). **State your rule.** Interviewers don't mind which rule you choose, only that money is conserved.
@@ -81,6 +110,16 @@ func (w *Wallet) Transfer(from, to *Account, amount int64) error {
 	to.balance += amount
 	return nil
 }
+```
+
+```python
+def transfer(self, src: Account, dst: Account, amount: int) -> None:
+    first, second = sorted((src, dst), key=lambda a: a.id)  # global lock order: no deadlock
+    with first.lock, second.lock:
+        if src.balance < amount:
+            raise InsufficientFundsError()
+        src.balance -= amount
+        dst.balance += amount
 ```
 
 Also handle `from == to`, which would lock the same mutex twice. Reject it up front.

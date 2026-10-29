@@ -29,3 +29,9 @@ Provided: `enum RoomType { SINGLE, DOUBLE, SUITE }`, `NoRoomAvailableException`.
 Provided: `RoomType` (`Single`, `Double`, `Suite`). `NewHotel()`. `Availability(in, out int) (map[RoomType]int, error)`. Errors: `ErrInvalid`, `ErrNotFound`, `ErrNoRoom`, `ErrBadStatus`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Provided: the `RoomType` enum, plus `NoRoomAvailableError` and `BookingStatusError` (for a wrong lifecycle step or wrong check-in day). `availability` returns a `dict` from every `RoomType` to a count. Invalid input raises `ValueError`. Methods are snake_case: `add_room`, `room_of`, `check_in`, `add_charge`, `check_out`.
+
+</div>

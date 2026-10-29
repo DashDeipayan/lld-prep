@@ -83,6 +83,47 @@ func (h *History) Undo() bool {
 }
 ```
 
+```python
+class Command(ABC):
+    @abstractmethod
+    def execute(self) -> None: ...
+
+    @abstractmethod
+    def undo(self) -> None: ...
+
+
+class DeleteRange(Command):
+    def __init__(self, doc: Document, start: int, end: int) -> None:
+        self._doc, self._start, self._end = doc, start, end
+        self._removed = ""  # captured on execute, used by undo
+
+    def execute(self) -> None:
+        self._removed = self._doc.text[self._start:self._end]
+        self._doc.delete(self._start, self._end)
+
+    def undo(self) -> None:
+        self._doc.insert(self._start, self._removed)
+
+
+class History:
+    def __init__(self) -> None:
+        self._undo: List[Command] = []
+        self._redo: List[Command] = []
+
+    def run(self, c: Command) -> None:
+        c.execute()
+        self._undo.append(c)
+        self._redo.clear()
+
+    def undo(self) -> bool:
+        if not self._undo:
+            return False
+        c = self._undo.pop()
+        c.undo()
+        self._redo.append(c)
+        return True
+```
+
 ## Alternatives to mention
 
 - **Memento:** snapshot the whole state instead of reversing each command. Simpler, but uses more memory. Fine for small documents or game boards (undo a chess move by restoring the board).

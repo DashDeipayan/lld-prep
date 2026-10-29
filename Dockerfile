@@ -1,5 +1,6 @@
-# LLD Prep: one container with the server, Go (for Go exercises) and a JDK
-# (for Java exercises). Built for Render, works on any Docker host.
+# LLD Prep: one container with the server, Go (for Go exercises), a JDK (for
+# Java exercises) and Python 3 (for Python exercises). Built for Render, works
+# on any Docker host.
 
 FROM golang:1.23-bookworm AS build
 WORKDIR /src
@@ -11,7 +12,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/lldprep .
 
 FROM golang:1.23-bookworm
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openjdk-17-jdk-headless \
+ && apt-get install -y --no-install-recommends openjdk-17-jdk-headless python3 \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 10001 app \
  && mkdir -p /data && chown app:app /data

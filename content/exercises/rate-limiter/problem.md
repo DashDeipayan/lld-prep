@@ -38,3 +38,9 @@ Java: `interface RateLimiter { boolean allow(String key); }` and `interface Cloc
 Go: `type RateLimiter interface { Allow(key string) bool }` and `type Clock func() time.Time` are provided. Implement `NewTokenBucket(capacity int, refillPerSecond float64, c Clock) RateLimiter`, `NewFixedWindow(max int, window time.Duration, c Clock) RateLimiter` and `NewSlidingWindow(max int, window time.Duration, c Clock) RateLimiter`. Fixed windows align to multiples of `window` since the Unix epoch.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python: `RateLimiter` is an abstract base class with `allow(key) -> bool`, and a clock is a zero-argument callable returning milliseconds. Implement `TokenBucketLimiter(capacity, refill_per_second, clock)`, `FixedWindowLimiter(max_requests, window_ms, clock)` and `SlidingWindowLimiter(max_requests, window_ms, clock)`. Python floats are IEEE-754 doubles too, so the epsilon trap applies.
+
+</div>

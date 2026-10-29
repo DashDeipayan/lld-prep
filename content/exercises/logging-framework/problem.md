@@ -35,3 +35,9 @@ error("charge failed") → console + alerts
 Go API: `type Level int` with constants `Debug, Info, Warn, Error` and a `String()` method that returns `"DEBUG"` etc. `NewLogger(name string, min Level) *Logger`. `(*Logger).AddHandler(h Handler) *Logger`. `SetLevel(Level)`. `Debug/Info/Warn/Error(msg string)`. `Handler` interface: `Handle(logger string, lvl Level, msg string) error`. `Formatter` interface: `Format(logger string, lvl Level, msg string) string`. `NewMemoryHandler(min Level, sink *[]string, f Formatter) Handler`. Formatters: `SimpleFormatter{}`, `JSONFormatter{}`.
 
 </div>
+
+<div class="lang-note" data-lang="python">
+
+Python API: `Level` is an `IntEnum`, so `Level.DEBUG < Level.INFO`, and `level.name` gives `"DEBUG"`. `Logger(name, min_level)` has `add_handler(h)` (which returns the logger, so calls chain), `set_level(level)` and `debug/info/warn/error(msg)`. `Handler` and `Formatter` are abstract base classes with `handle(logger, level, msg)` and `format(logger, level, msg)`. Use `MemoryHandler(min_level, sink, formatter)`. `json.dumps` can do the JSON escaping for you.
+
+</div>

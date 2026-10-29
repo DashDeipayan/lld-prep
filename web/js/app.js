@@ -374,6 +374,7 @@ function Settings() {
       ${tc.data ? html`<ul class="tc">
         <li class=${tc.data.java ? 'ok' : 'bad'}><b>Java</b> ${tc.data.java || 'not found. Install JDK 17+ and restart.'}</li>
         <li class=${tc.data.go ? 'ok' : 'bad'}><b>Go</b> ${tc.data.go || 'not found. Install Go 1.23+ and restart.'}</li>
+        <li class=${tc.data.python ? 'ok' : 'bad'}><b>Python</b> ${tc.data.python || 'not found. Install Python 3.8+ and restart.'}</li>
       </ul>` : html`<${Loading} />`}
     </section>
     <section class="card">
@@ -433,7 +434,7 @@ function App() {
   </div>`;
 }
 
-// Global: Java/Go tab clicks inside rendered markdown switch the language everywhere.
+// Global: language tab clicks inside rendered markdown switch the language everywhere.
 document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-lang-tab]');
   if (t) setLang(t.dataset.langTab);

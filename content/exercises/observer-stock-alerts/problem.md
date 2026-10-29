@@ -2,10 +2,10 @@ Build the core of a price-alert feature: a `StockTicker` subject, and a `Thresho
 
 ## StockTicker
 
-- `subscribe(listener)` returns an **unsubscribe handle** (Java `Runnable`, Go `func()`). Calling it twice is harmless.
+- `subscribe(listener)` returns an **unsubscribe handle** (Java `Runnable`, Go `func()`, Python a callable). Calling it twice is harmless.
 - `update(symbol, price)` notifies every listener with `(symbol, price)`, but **only if the price changed** for that symbol. The first price for a symbol always counts as a change.
 - Listeners are notified **in subscription order**.
-- A listener that throws (Java) or panics (Go) must not stop the others.
+- A listener that throws (Java), panics (Go) or raises (Python) must not stop the others.
 - A listener may unsubscribe **itself or others while being notified**. Listeners removed during a notification may still receive that event, but must not receive later ones.
 - `listenerCount()` returns the number of active subscriptions.
 
@@ -23,5 +23,11 @@ It's **edge-triggered**: once fired, it doesn't fire again until the condition h
 <div class="lang-note" data-lang="go">
 
 Go API: `NewStockTicker() *StockTicker`, `Subscribe(l PriceListener) func()`, `Update(symbol string, price int64)`, `ListenerCount() int`, `NewThresholdAlert(symbol string, threshold int64, above bool, sink *[]string) PriceListener`.
+
+</div>
+
+<div class="lang-note" data-lang="python">
+
+Python API: a listener is any callable `listener(symbol, price)`. Use `StockTicker()` with `subscribe(listener)`, which returns a function that unsubscribes, plus `update(symbol, price)` and `listener_count()`. `ThresholdAlert(symbol, threshold, above, sink)` is a callable class (it defines `__call__`), so you subscribe the alert object itself.
 
 </div>

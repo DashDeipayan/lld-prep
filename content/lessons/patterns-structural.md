@@ -53,6 +53,26 @@ func (r *retrying) Send(u User, msg string) error {
 // Go's net/http middleware is the decorator pattern: func(http.Handler) http.Handler.
 ```
 
+```python
+class RetryingNotifier(Notifier):
+    def __init__(self, inner: Notifier, attempts: int) -> None:
+        self._inner, self._attempts = inner, attempts
+
+    def send(self, user: User, msg: str) -> None:
+        last = None
+        for _ in range(self._attempts):
+            try:
+                self._inner.send(user, msg)
+                return
+            except Exception as e:
+                last = e
+        raise last
+
+# Composition at wiring time, in any order:
+sms = RateLimitedNotifier(RetryingNotifier(SmsNotifier(gw), 3), clock, timedelta(hours=1))
+# (Python's @decorator syntax wraps functions; the GoF Decorator wraps objects. Same idea, different level.)
+```
+
 **Why not subclass?** `RetryingRateLimitedLoggingSmsNotifier` needs a class per combination. Decorators compose at runtime. Java's `BufferedInputStream(new FileInputStream(...))` is the textbook example to cite.
 
 ## Adapter: make an incompatible interface fit
@@ -73,6 +93,22 @@ final class StripeAdapter implements PaymentGateway {
 }
 ```
 
+```python
+class PaymentGateway(ABC):
+    @abstractmethod
+    def charge(self, cents: int, currency: str) -> Receipt: ...
+
+
+# Vendor SDK we can't change: amounts in major units as Decimal, different names
+class StripeAdapter(PaymentGateway):
+    def __init__(self, client: StripeClient) -> None:
+        self._client = client
+
+    def charge(self, cents: int, currency: str) -> Receipt:
+        c = self._client.create_charge(Decimal(cents) / 100, currency.lower())
+        return Receipt(c.id, cents)
+```
+
 The core domain depends on `PaymentGateway`, and only the adapter knows Stripe exists. Swapping vendors means writing a new adapter.
 
 ## Facade: one simple entry point over a subsystem
@@ -90,6 +126,21 @@ final class CheckoutFacade {
         return shipping.schedule(cart, to);
     }
 }
+```
+
+```python
+class CheckoutFacade:
+    def __init__(self, inventory: InventoryService, payments: PaymentService, shipping: ShippingService) -> None:
+        self._inventory, self._payments, self._shipping = inventory, payments, shipping
+
+    def place_order(self, cart: Cart, pd: PaymentDetails, to: Address) -> Order:
+        self._inventory.reserve(cart)
+        try:
+            self._payments.charge(pd, cart.total())
+        except PaymentError:
+            self._inventory.release(cart)  # compensate, then re-raise
+            raise
+        return self._shipping.schedule(cart, to)
 ```
 
 In machine-coding rounds, your top-level service (`ParkingLotService`, `SplitwiseApp`) usually **is** a facade over repositories and strategies. Name it as one.
@@ -133,6 +184,35 @@ func (d *Dir) Size() int64 {
 	}
 	return total
 }
+```
+
+```python
+class Node(ABC):
+    name: str
+
+    @abstractmethod
+    def size(self) -> int: ...
+
+
+@dataclass
+class FileNode(Node):
+    name: str
+    bytes: int
+
+    def size(self) -> int:
+        return self.bytes
+
+
+class Dir(Node):
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.children: Dict[str, Node] = {}
+
+    def size(self) -> int:
+        return sum(c.size() for c in self.children.values())  # recursion
+
+    def add(self, node: Node) -> None:
+        self.children[node.name] = node
 ```
 
 ## Proxy: same interface, controlled access
