@@ -1,10 +1,13 @@
-// Package oauth implements "Sign in with Google" and "Sign in with Apple" as
-// OpenID Connect authorization-code flows, using only the standard library.
+// Package oauth implements "Sign in with Google" and "Sign in with GitHub" as
+// OAuth 2.0 authorization-code flows (with PKCE), using only the standard library.
 //
 // The flow: AuthCodeURL sends the browser to the provider; the provider sends
-// it back with a code; Exchange trades the code for an ID token at the
-// provider's token endpoint and verifies that token's signature (against the
-// provider's published keys), issuer, audience, expiry and nonce.
+// it back with a code; Exchange trades the code at the provider's token
+// endpoint and works out who signed in:
+//   - Google speaks OpenID Connect: it returns an ID token, whose signature
+//     (against Google's published keys), issuer, audience, expiry and nonce we verify.
+//   - GitHub is plain OAuth: it returns an access token, which we use to ask
+//     the GitHub API for the user's id, login and verified email.
 package oauth
 
 import (
@@ -30,32 +33,36 @@ import (
 // Identity is who the provider says signed in.
 type Identity struct {
 	Provider      string
-	Subject       string // stable, provider-scoped user id ("sub")
+	Subject       string // stable, provider-scoped user id
 	Email         string
 	EmailVerified bool
+	Username      string // the provider's handle, if it has one (GitHub login)
 }
 
-// Provider is one OpenID Connect identity provider.
+// Provider is one identity provider.
 type Provider struct {
-	Name     string // "google" or "apple"
+	Name     string // "google" or "github"
 	ClientID string
 	AuthURL  string
 	TokenURL string
-	JWKSURL  string
-	Issuers  []string
 	Scopes   []string
-	// FormPost makes the provider POST the result back (Apple requires it when
-	// asking for the email scope); otherwise it's a GET redirect.
-	FormPost bool
-	// UsePKCE adds a code_challenge (RFC 7636). Google supports it.
-	UsePKCE bool
-	// ClientSecret returns the client secret for the token request. Google's is
-	// a fixed string; Apple's is a signed JWT generated on demand.
+	// UsePKCE adds a code_challenge (RFC 7636). Google and GitHub support it.
+	UsePKCE      bool
 	ClientSecret func() (string, error)
+
+	// OpenID Connect providers (Google): the ID token is verified against these.
+	JWKSURL string
+	Issuers []string
+
+	// Plain OAuth providers (GitHub): who signed in comes from an API call
+	// with the access token instead of an ID token.
+	Profile func(ctx context.Context, c *http.Client, accessToken string) (Identity, error)
 
 	HTTP *http.Client
 	keys *jwks
 }
+
+func (p *Provider) isOIDC() bool { return p.Profile == nil }
 
 // NewGoogle configures Google. Create the OAuth client (type "Web application")
 // in Google Cloud Console → APIs & Services → Credentials.
@@ -71,27 +78,6 @@ func NewGoogle(clientID, clientSecret string) *Provider {
 		UsePKCE:      true,
 		ClientSecret: func() (string, error) { return clientSecret, nil },
 	}
-}
-
-// NewApple configures Sign in with Apple. clientID is the Services ID; the
-// private key is the .p8 key (PEM) created under Certificates, Identifiers &
-// Profiles → Keys with "Sign in with Apple" enabled.
-func NewApple(clientID, teamID, keyID, privateKeyPEM string) (*Provider, error) {
-	secret, err := newAppleSecret(clientID, teamID, keyID, privateKeyPEM)
-	if err != nil {
-		return nil, err
-	}
-	return &Provider{
-		Name:         "apple",
-		ClientID:     clientID,
-		AuthURL:      "https://appleid.apple.com/auth/authorize",
-		TokenURL:     "https://appleid.apple.com/auth/token",
-		JWKSURL:      "https://appleid.apple.com/auth/keys",
-		Issuers:      []string{"https://appleid.apple.com"},
-		Scopes:       []string{"email"},
-		FormPost:     true,
-		ClientSecret: secret.get,
-	}, nil
 }
 
 func (p *Provider) client() *http.Client {
@@ -124,10 +110,9 @@ func (p *Provider) AuthCodeURL(redirectURI, state, nonce, verifier string) strin
 		"redirect_uri":  {redirectURI},
 		"scope":         {strings.Join(p.Scopes, " ")},
 		"state":         {state},
-		"nonce":         {nonce},
 	}
-	if p.FormPost {
-		q.Set("response_mode", "form_post")
+	if p.isOIDC() {
+		q.Set("nonce", nonce)
 	}
 	if p.UsePKCE {
 		q.Set("code_challenge", PKCEChallenge(verifier))
@@ -171,16 +156,36 @@ func (p *Provider) Exchange(ctx context.Context, code, redirectURI, verifier, no
 		return Identity{}, fmt.Errorf("%s token request: %s: %s", p.Name, resp.Status, strings.TrimSpace(string(body)))
 	}
 	var tok struct {
-		IDToken string `json:"id_token"`
+		IDToken     string `json:"id_token"`
+		AccessToken string `json:"access_token"`
+		Error       string `json:"error"` // GitHub reports errors with a 200 status
+		ErrorDesc   string `json:"error_description"`
 	}
-	if err := json.Unmarshal(body, &tok); err != nil || tok.IDToken == "" {
+	if err := json.Unmarshal(body, &tok); err != nil {
+		return Identity{}, fmt.Errorf("%s token response: %w", p.Name, err)
+	}
+	if tok.Error != "" {
+		return Identity{}, fmt.Errorf("%s token request: %s: %s", p.Name, tok.Error, tok.ErrorDesc)
+	}
+	if !p.isOIDC() {
+		if tok.AccessToken == "" {
+			return Identity{}, fmt.Errorf("%s token response has no access_token", p.Name)
+		}
+		id, err := p.Profile(ctx, p.client(), tok.AccessToken)
+		if err != nil {
+			return Identity{}, err
+		}
+		id.Provider = p.Name
+		return id, nil
+	}
+	if tok.IDToken == "" {
 		return Identity{}, fmt.Errorf("%s token response has no id_token", p.Name)
 	}
 	return p.VerifyIDToken(ctx, tok.IDToken, nonce)
 }
 
-// idClaims are the ID token claims we use. Apple sends email_verified as a
-// string ("true") and Google as a boolean, so it's decoded by hand.
+// idClaims are the ID token claims we use. email_verified is a boolean for
+// Google, but some providers send the string "true", so it's decoded by hand.
 type idClaims struct {
 	Iss           string          `json:"iss"`
 	Aud           json.RawMessage `json:"aud"` // a string, or an array of strings

@@ -3,15 +3,12 @@ package oauth
 import (
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -141,7 +138,7 @@ func TestVerifyRejectsBadTokens(t *testing.T) {
 			t.Errorf("%s: expected an error", name)
 		}
 	}
-	// audience as an array, email_verified as Apple's string form
+	// audience as an array, email_verified in its string form
 	c := goodClaims()
 	c["aud"] = []string{"x", "client-123"}
 	c["email_verified"] = "true"
@@ -169,41 +166,68 @@ func TestAuthCodeURL(t *testing.T) {
 	}
 }
 
-func TestAppleClientSecretIsValidES256(t *testing.T) {
-	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	der, _ := x509.MarshalPKCS8PrivateKey(key)
-	pemKey := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
-	// Simulate an env var with literal \n sequences.
-	p, err := NewApple("com.example.web", "TEAM123456", "KEY123", strings.ReplaceAll(pemKey, "\n", `\n`))
+func newFakeGitHub(t *testing.T, tokenBody string) (*httptest.Server, *url.Values) {
+	t.Helper()
+	var last url.Values
+	mux := http.NewServeMux()
+	mux.HandleFunc("/login/oauth/access_token", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		last = r.PostForm
+		if r.Header.Get("Accept") != "application/json" {
+			t.Errorf("token request Accept = %q", r.Header.Get("Accept"))
+		}
+		io.WriteString(w, tokenBody) // GitHub answers 200 even for errors
+	})
+	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer gho_abc" || r.Header.Get("User-Agent") == "" {
+			http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
+			return
+		}
+		io.WriteString(w, `{"id": 583231, "login": "Octo-Cat", "email": null}`)
+	})
+	mux.HandleFunc("/user/emails", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `[{"email":"old@example.com","primary":false,"verified":true},
+			{"email":"Octo@Example.com","primary":true,"verified":true}]`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv, &last
+}
+
+func TestGitHubExchangeReadsProfile(t *testing.T) {
+	srv, last := newFakeGitHub(t, `{"access_token":"gho_abc","token_type":"bearer","scope":"read:user,user:email"}`)
+	p := NewGitHubAt("gh-client", "gh-secret", srv.URL, srv.URL)
+	id, err := p.Exchange(context.Background(), "code-1", "https://app.test/api/auth/github/callback", "verifier-1", "")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("exchange: %v", err)
 	}
-	tok, err := p.ClientSecret()
-	if err != nil {
-		t.Fatal(err)
+	if id.Provider != "github" || id.Subject != "583231" || id.Username != "Octo-Cat" || id.Email != "octo@example.com" || !id.EmailVerified {
+		t.Fatalf("identity %+v", id)
 	}
-	parts := strings.Split(tok, ".")
-	var header map[string]string
-	var claims map[string]any
-	decodeSegment(parts[0], &header)
-	decodeSegment(parts[1], &claims)
-	if header["alg"] != "ES256" || header["kid"] != "KEY123" {
-		t.Fatalf("header %v", header)
-	}
-	if claims["iss"] != "TEAM123456" || claims["sub"] != "com.example.web" || claims["aud"] != "https://appleid.apple.com" {
-		t.Fatalf("claims %v", claims)
-	}
-	sig, _ := base64.RawURLEncoding.DecodeString(parts[2])
-	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
-	r, s := new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])
-	if len(sig) != 64 || !ecdsa.Verify(&key.PublicKey, digest[:], r, s) {
-		t.Fatal("client secret signature does not verify")
-	}
-	again, _ := p.ClientSecret()
-	if again != tok {
-		t.Fatal("client secret should be cached")
-	}
-	if _, err := NewApple("a", "b", "c", "not a key"); err == nil {
-		t.Fatal("expected an error for a bad key")
+	if last.Get("code_verifier") != "verifier-1" || last.Get("client_secret") != "gh-secret" || last.Get("code") != "code-1" {
+		t.Fatalf("token form %v", *last)
 	}
 }
+
+func TestGitHubTokenErrorsWithStatus200(t *testing.T) {
+	srv, _ := newFakeGitHub(t, `{"error":"bad_verification_code","error_description":"The code passed is incorrect or expired."}`)
+	_, err := NewGitHubAt("c", "s", srv.URL, srv.URL).Exchange(context.Background(), "x", "https://app.test/cb", "v", "")
+	if err == nil || !strings.Contains(err.Error(), "bad_verification_code") {
+		t.Fatalf("want bad_verification_code, got %v", err)
+	}
+	srv2, _ := newFakeGitHub(t, `{"access_token":"wrong-token"}`)
+	if _, err := NewGitHubAt("c", "s", srv2.URL, srv2.URL).Exchange(context.Background(), "x", "https://app.test/cb", "v", ""); err == nil {
+		t.Fatal("a token the API rejects must fail the sign-in")
+	}
+}
+
+func TestGitHubAuthURL(t *testing.T) {
+	u, _ := url.Parse(NewGitHub("gh-client", "s").AuthCodeURL("https://app.test/cb", "st", "no", "verifier"))
+	q := u.Query()
+	if u.Host != "github.com" || q.Get("client_id") != "gh-client" || q.Get("state") != "st" || q.Get("scope") != "read:user user:email" ||
+		q.Get("code_challenge") != PKCEChallenge("verifier") || q.Get("code_challenge_method") != "S256" || q.Has("nonce") {
+		t.Fatalf("auth url %s", u)
+	}
+}
+
+func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }

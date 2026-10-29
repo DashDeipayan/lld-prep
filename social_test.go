@@ -1,6 +1,6 @@
 package main
 
-// End-to-end test of Google/Apple sign-in against a fake identity provider and
+// End-to-end test of Google/GitHub sign-in against fake identity providers and
 // a real MongoDB. It is skipped unless MONGODB_TEST_URI is set, e.g.
 //
 //	docker run -d -p 127.0.0.1:27017:27017 mongo:7
@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/cookiejar"
@@ -39,7 +40,8 @@ type fakeProvider struct {
 	nonces map[string]string // code -> nonce
 	next   int
 	// who the next person to "consent" is
-	sub, email string
+	sub, email, login string
+	tokens            map[string][3]string // GitHub-style access token -> sub, email, login
 }
 
 func newFakeProvider(t *testing.T) *fakeProvider {
@@ -47,7 +49,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeProvider{t: t, key: key, nonces: map[string]string{}}
+	f := &fakeProvider{t: t, key: key, nonces: map[string]string{}, tokens: map[string][3]string{}}
 	mux := http.NewServeMux()
 	// The consent screen: approve immediately and send the browser back.
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +57,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 		f.mu.Lock()
 		f.next++
 		code := fmt.Sprintf("code-%d", f.next)
-		f.nonces[code] = q.Get("nonce") + "|" + f.sub + "|" + f.email
+		f.nonces[code] = q.Get("nonce") + "|" + f.sub + "|" + f.email + "|" + f.login
 		f.mu.Unlock()
 		http.Redirect(w, r, q.Get("redirect_uri")+"?"+url.Values{"code": {code}, "state": {q.Get("state")}}.Encode(), http.StatusFound)
 	})
@@ -69,11 +71,46 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 			http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
 			return
 		}
-		parts := strings.SplitN(v, "|", 3)
+		parts := strings.SplitN(v, "|", 4)
 		json.NewEncoder(w).Encode(map[string]string{"id_token": f.sign(map[string]any{
 			"iss": "https://idp.test", "aud": "client-1", "sub": parts[1], "email": parts[2],
 			"email_verified": true, "nonce": parts[0], "exp": time.Now().Add(time.Hour).Unix(),
 		})})
+	})
+	// GitHub-style: the token endpoint hands out an access token, and the API says who it belongs to.
+	mux.HandleFunc("/login/oauth/access_token", func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		f.mu.Lock()
+		v, ok := f.nonces[r.PostForm.Get("code")]
+		delete(f.nonces, r.PostForm.Get("code"))
+		if ok {
+			parts := strings.SplitN(v, "|", 4)
+			f.tokens["tok-"+r.PostForm.Get("code")] = [3]string{parts[1], parts[2], parts[3]}
+		}
+		f.mu.Unlock()
+		if !ok {
+			io.WriteString(w, `{"error":"bad_verification_code"}`)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"access_token": "tok-" + r.PostForm.Get("code")})
+	})
+	gh := func(r *http.Request) ([3]string, bool) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		v, ok := f.tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
+		return v, ok
+	}
+	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
+		v, ok := gh(r)
+		if !ok {
+			http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
+			return
+		}
+		fmt.Fprintf(w, `{"id": %s, "login": %q}`, v[0], v[2])
+	})
+	mux.HandleFunc("/user/emails", func(w http.ResponseWriter, r *http.Request) {
+		v, _ := gh(r)
+		fmt.Fprintf(w, `[{"email": %q, "primary": true, "verified": true}]`, v[1])
 	})
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"keys": []map[string]string{{
@@ -99,13 +136,16 @@ func (f *fakeProvider) sign(claims map[string]any) string {
 	return in + "." + base64.RawURLEncoding.EncodeToString(sig)
 }
 
-func (f *fakeProvider) provider(name string) *oauth.Provider {
-	return &oauth.Provider{
-		Name: name, ClientID: "client-1",
+func (f *fakeProvider) providers() map[string]*oauth.Provider {
+	google := &oauth.Provider{
+		Name: "google", ClientID: "client-1",
 		AuthURL: f.srv.URL + "/auth", TokenURL: f.srv.URL + "/token", JWKSURL: f.srv.URL + "/keys",
-		Issuers: []string{"https://idp.test"}, Scopes: []string{"openid", "email"}, UsePKCE: name == "google",
+		Issuers: []string{"https://idp.test"}, Scopes: []string{"openid", "email"}, UsePKCE: true,
 		ClientSecret: func() (string, error) { return "secret", nil },
 	}
+	github := oauth.NewGitHubAt("gh-client", "gh-secret", f.srv.URL, f.srv.URL)
+	github.AuthURL = f.srv.URL + "/auth" // the fake consent screen is shared
+	return map[string]*oauth.Provider{"google": google, "github": github}
 }
 
 type testApp struct {
@@ -129,7 +169,7 @@ func newTestApp(t *testing.T, invite string) *testApp {
 	t.Cleanup(func() { db.DropForTests(context.Background()); db.Close() })
 	idp := newFakeProvider(t)
 	au := &auth{db: db, inviteCode: invite, limiter: newLoginLimiter(), social: &social{
-		providers: map[string]*oauth.Provider{"google": idp.provider("google"), "apple": idp.provider("apple")},
+		providers: idp.providers(),
 		key:       []byte("test-key"),
 	}}
 	mux := http.NewServeMux()
@@ -207,7 +247,7 @@ func TestSocialSignUpAndSignIn(t *testing.T) {
 	if me["user"] != "asha.k" || fmt.Sprint(me["linked"]) != "[google]" || me["hasPassword"] != false {
 		t.Fatalf("me after Google sign-up: %v", me)
 	}
-	if fmt.Sprint(me["providers"]) != "[apple google]" {
+	if fmt.Sprint(me["providers"]) != "[github google]" {
 		t.Fatalf("providers: %v", me["providers"])
 	}
 
@@ -224,6 +264,14 @@ func TestSocialSignUpAndSignIn(t *testing.T) {
 	b3.signIn(a.srv.URL, "google", "")
 	if u := b3.me(a.srv.URL)["user"]; u != "asha.k2" {
 		t.Fatalf("second person got user %v", u)
+	}
+
+	// A GitHub sign-up is named after the GitHub login, not the email.
+	a.idp.sub, a.idp.email, a.idp.login = "2002", "someone@example.com", "Octo-Cat"
+	b4 := a.browser()
+	b4.signIn(a.srv.URL, "github", "")
+	if me := b4.me(a.srv.URL); me["user"] != "octo-cat" || fmt.Sprint(me["linked"]) != "[github]" {
+		t.Fatalf("GitHub sign-up: %v", me)
 	}
 
 	// Password sign-in doesn't work for a Google-only account.
@@ -264,27 +312,27 @@ func TestSocialLinkToExistingAccount(t *testing.T) {
 	if code := b.post(a.srv.URL, "/api/auth/signup", `{"username":"ravi","password":"password123"}`); code != http.StatusOK {
 		t.Fatalf("signup: %d", code)
 	}
-	a.idp.sub, a.idp.email = "a-1", "relay@privaterelay.appleid.com"
-	if to := b.signIn(a.srv.URL, "apple", "?mode=link"); to != "/#/settings?connected=apple" {
+	a.idp.sub, a.idp.email, a.idp.login = "1001", "ravi@example.com", "ravi-gh"
+	if to := b.signIn(a.srv.URL, "github", "?mode=link"); to != "/#/settings?connected=github" {
 		t.Fatalf("link went to %q", to)
 	}
-	if me := b.me(a.srv.URL); fmt.Sprint(me["linked"]) != "[apple]" || me["hasPassword"] != true {
+	if me := b.me(a.srv.URL); fmt.Sprint(me["linked"]) != "[github]" || me["hasPassword"] != true {
 		t.Fatalf("me after link: %v", me)
 	}
-	// Now "Continue with Apple" from a fresh browser signs in as ravi.
+	// Now "Continue with GitHub" from a fresh browser signs in as ravi.
 	b2 := a.browser()
-	b2.signIn(a.srv.URL, "apple", "")
+	b2.signIn(a.srv.URL, "github", "")
 	if u := b2.me(a.srv.URL)["user"]; u != "ravi" {
-		t.Fatalf("apple sign-in after link got %v", u)
+		t.Fatalf("GitHub sign-in after link got %v", u)
 	}
-	// The same Apple account can't be linked to a second user.
+	// The same GitHub account can't be linked to a second user.
 	b3 := a.browser()
 	b3.post(a.srv.URL, "/api/auth/signup", `{"username":"meera","password":"password123"}`)
-	if to := b3.signIn(a.srv.URL, "apple", "?mode=link"); !strings.Contains(to, "already+connected") {
+	if to := b3.signIn(a.srv.URL, "github", "?mode=link"); !strings.Contains(to, "already+connected") {
 		t.Fatalf("double link went to %q", to)
 	}
 	// Linking requires being signed in.
-	if to := a.browser().signIn(a.srv.URL, "apple", "?mode=link"); !strings.Contains(to, "Sign+in+first") {
+	if to := a.browser().signIn(a.srv.URL, "github", "?mode=link"); !strings.Contains(to, "Sign+in+first") {
 		t.Fatalf("anonymous link went to %q", to)
 	}
 }
@@ -318,16 +366,13 @@ func TestSocialRejectsForgedCallbacks(t *testing.T) {
 	if loc := r3.Header.Get("Location"); !strings.Contains(loc, "cancelled") {
 		t.Fatalf("cancel went to %q", loc)
 	}
-	// Apple-style cross-site form POST to the callback is allowed through the
-	// same-origin check (the state cookie protects it) and fails cleanly here.
-	req, _ := http.NewRequest(http.MethodPost, a.srv.URL+"/api/auth/apple/callback", strings.NewReader("code=x&state=y"))
+	// Callbacks are GET-only now, and cross-site POSTs anywhere are refused.
+	req, _ := http.NewRequest(http.MethodPost, a.srv.URL+"/api/auth/github/callback", strings.NewReader("code=x&state=y"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", "https://appleid.apple.com")
-	r4, _ := b.c.Do(req)
-	if r4.StatusCode != http.StatusFound || !strings.Contains(r4.Header.Get("Location"), "auth_error=") {
-		t.Fatalf("cross-site POST callback: %s %q", r4.Status, r4.Header.Get("Location"))
+	req.Header.Set("Origin", "https://evil.test")
+	if r4, _ := b.c.Do(req); r4.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-site POST to callback: %s", r4.Status)
 	}
-	// But other cross-site POSTs are still refused.
 	req2, _ := http.NewRequest(http.MethodPost, a.srv.URL+"/api/auth/logout", nil)
 	req2.Header.Set("Origin", "https://evil.test")
 	if r5, _ := b.c.Do(req2); r5.StatusCode != http.StatusForbidden {
@@ -358,7 +403,7 @@ func TestSocialUIServer(t *testing.T) {
 	}
 	t.Cleanup(func() { db.DropForTests(context.Background()); db.Close() })
 	au := &auth{db: db, inviteCode: os.Getenv("LLDPREP_UI_TEST_INVITE"), limiter: newLoginLimiter(), social: &social{
-		providers: map[string]*oauth.Provider{"google": idp.provider("google"), "apple": idp.provider("apple")},
+		providers: idp.providers(),
 		key:       []byte("test-key"),
 	}}
 	app := &app{content: cs, store: db, contentFS: os.DirFS("content")}
@@ -369,7 +414,7 @@ func TestSocialUIServer(t *testing.T) {
 	mux.HandleFunc("POST /test/next-identity", func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		idp.mu.Lock()
-		idp.sub, idp.email = r.Form.Get("sub"), r.Form.Get("email")
+		idp.sub, idp.email, idp.login = r.Form.Get("sub"), r.Form.Get("email"), r.Form.Get("login")
 		idp.mu.Unlock()
 	})
 	mux.Handle("/", staticHandler(os.DirFS("web"), ""))

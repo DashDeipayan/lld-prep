@@ -18,7 +18,7 @@ import (
 	"lldprep/internal/oauth"
 )
 
-// social is "Sign in with Google / Apple". It only exists in accounts mode.
+// social is "Sign in with Google / GitHub". It only exists in accounts mode.
 type social struct {
 	providers map[string]*oauth.Provider
 	publicURL string // fixed origin for redirect URIs; empty = derive from the request
@@ -51,20 +51,12 @@ func socialFromEnv(publicURL string) (*social, error) {
 		}
 		s.providers["google"] = oauth.NewGoogle(id, secret)
 	}
-	if id := os.Getenv("APPLE_CLIENT_ID"); id != "" {
-		keyPEM := os.Getenv("APPLE_PRIVATE_KEY")
-		if file := os.Getenv("APPLE_PRIVATE_KEY_FILE"); keyPEM == "" && file != "" {
-			b, err := os.ReadFile(file)
-			if err != nil {
-				return nil, err
-			}
-			keyPEM = string(b)
+	if id := os.Getenv("GITHUB_CLIENT_ID"); id != "" {
+		secret := os.Getenv("GITHUB_CLIENT_SECRET")
+		if secret == "" {
+			return nil, errors.New("GITHUB_CLIENT_ID is set but GITHUB_CLIENT_SECRET is not")
 		}
-		p, err := oauth.NewApple(id, os.Getenv("APPLE_TEAM_ID"), os.Getenv("APPLE_KEY_ID"), keyPEM)
-		if err != nil {
-			return nil, err
-		}
-		s.providers["apple"] = p
+		s.providers["github"] = oauth.NewGitHub(id, secret)
 	}
 	if len(s.providers) == 0 {
 		return nil, nil
@@ -108,9 +100,7 @@ func (s *social) redirectURI(r *http.Request, provider string) string {
 
 func (au *auth) socialRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/{provider}/start", au.handleOAuthStart)
-	// Google redirects back with GET; Apple POSTs a form (response_mode=form_post).
 	mux.HandleFunc("GET /api/auth/{provider}/callback", au.handleOAuthCallback)
-	mux.HandleFunc("POST /api/auth/{provider}/callback", au.handleOAuthCallback)
 }
 
 // handleOAuthStart: /api/auth/google/start?mode=login|link&invite=CODE
@@ -149,7 +139,7 @@ func (au *auth) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := r.ParseForm(); err != nil { // covers both the query string (GET) and the form body (POST)
+	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -161,7 +151,7 @@ func (au *auth) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if e := r.Form.Get("error"); e != "" {
 		msg := "Sign-in with " + title(p.Name) + " was cancelled."
-		if e != "access_denied" && e != "user_cancelled_authorize" {
+		if e != "access_denied" {
 			msg = title(p.Name) + " sign-in failed: " + e
 		}
 		authRedirect(w, r, back, msg)
@@ -203,14 +193,18 @@ func (au *auth) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !found {
-		// A new person. Sign-ups through Google/Apple obey the invite code too.
+		// A new person. Sign-ups through Google/GitHub obey the invite code too.
 		if au.inviteCode != "" && !st.Invited {
 			authRedirect(w, r, "/", "There's no account for that "+title(p.Name)+" login yet. Choose \"Create an account\", enter your invite code, then continue with "+title(p.Name)+".")
 			return
 		}
-		hint := p.Name
-		if at := strings.IndexByte(id.Email, '@'); at > 0 {
+		// Name the account after the GitHub login, else the email's local part.
+		hint := id.Username
+		if at := strings.IndexByte(id.Email, '@'); hint == "" && at > 0 {
 			hint = id.Email[:at]
+		}
+		if hint == "" {
+			hint = p.Name
 		}
 		if user, err = au.db.CreateExternalUser(ctx, hint); err == nil {
 			err = au.db.LinkIdentity(ctx, id.Provider, id.Subject, user, id.Email)
@@ -254,7 +248,7 @@ func (au *auth) setStateCookie(w http.ResponseWriter, r *http.Request, st oauthS
 	body := base64.RawURLEncoding.EncodeToString(payload)
 	http.SetCookie(w, &http.Cookie{
 		Name: oauthCookie, Value: body + "." + au.sign(body), Path: "/api/auth/", MaxAge: 600,
-		HttpOnly: true, Secure: isHTTPS(r), SameSite: stateSameSite(r),
+		HttpOnly: true, Secure: isHTTPS(r), SameSite: http.SameSiteLaxMode, // sent on the provider's top-level GET redirect back
 	})
 }
 
@@ -277,17 +271,7 @@ func (au *auth) readStateCookie(r *http.Request) (oauthState, bool) {
 
 func clearStateCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: oauthCookie, Value: "", Path: "/api/auth/", MaxAge: -1,
-		HttpOnly: true, Secure: isHTTPS(r), SameSite: stateSameSite(r)})
-}
-
-// Apple returns with a cross-site POST, which only carries cookies marked
-// SameSite=None (and those must be Secure). Over plain http (local
-// development), Lax is the only option that browsers accept.
-func stateSameSite(r *http.Request) http.SameSite {
-	if isHTTPS(r) {
-		return http.SameSiteNoneMode
-	}
-	return http.SameSiteLaxMode
+		HttpOnly: true, Secure: isHTTPS(r), SameSite: http.SameSiteLaxMode})
 }
 
 func (au *auth) sign(body string) string {
@@ -300,8 +284,8 @@ func title(provider string) string {
 	switch provider {
 	case "google":
 		return "Google"
-	case "apple":
-		return "Apple"
+	case "github":
+		return "GitHub"
 	}
 	return provider
 }
