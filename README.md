@@ -210,6 +210,7 @@ go run . [flags]
 | `-mongo` | `$MONGODB_URI` | MongoDB connection string. Turns on [accounts mode](#accounts-mode-mongodb): sign-in and separate progress per user. |
 | `-mongo-db` | `$MONGODB_DB` or `lldprep` | Database name in accounts mode. |
 | `-invite` | `$LLDPREP_INVITE_CODE` | In accounts mode, the code people must enter to create an account. |
+| `-public-url` | `$LLDPREP_PUBLIC_URL` | The site's public address, e.g. `https://lld-prep.deipayandash.com`, used for absolute URLs in link previews. If unset, it's taken from each request's host. |
 | `-dev` | off | Serve `web/` and `content/` from disk and reload content on every request, for editing. |
 | `-verify` | off | Content check: run every reference solution against its tests in both languages, then exit. |
 | `-only` | | With `-verify`, check only units whose id contains this string. |
@@ -302,6 +303,8 @@ Render doesn't offer MongoDB itself, so use MongoDB Atlas. Its free M0 cluster i
    - **`LLDPREP_INVITE_CODE`:** the code you'll give to the people who should be able to sign up.
 3. Open `https://<name>.onrender.com`, click **Create an account**, and enter the invite code.
 
+**Link previews:** shared links show a title, a description and a preview image (`web/og-image.png`, made from `docs/og-card.html`), via Open Graph and Twitter Card tags. Set `LLDPREP_PUBLIC_URL` to your domain so the tags always use it. Previews need the page itself to be public, so they don't work while `LLDPREP_PASSWORD` is set. That's one more reason to use accounts mode with an invite code instead.
+
 To set it up by hand instead, create a **Web Service** from the repo with **Runtime: Docker**, add those two environment variables, and set the health check path to `/healthz`. Render's `$PORT` is picked up automatically.
 
 **Resources:**
@@ -362,6 +365,7 @@ In accounts mode, every `/api/` route except `/api/auth/*` needs a signed-in use
 ├── auth.go                    sign-up, sign-in, sessions, login rate limit (accounts mode)
 ├── go.mod                     module lldprep (MongoDB driver, x/crypto)
 ├── Dockerfile, docker-entrypoint.sh, render.yaml   hosting
+├── docs/og-card.html          source of the link-preview image (web/og-image.png)
 ├── internal/
 │   ├── content/content.go     loads the plan, lessons, exercises, tutorials, quizzes, mocks; search
 │   ├── runner/                compile/run/test for Java and Go, timeouts, process cleanup
