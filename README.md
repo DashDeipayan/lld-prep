@@ -22,6 +22,7 @@ It assumes you already work as an engineer. It doesn't teach what a class or an 
 - [Mock interviews and the rubric](#mock-interviews-and-the-rubric)
 - [Command-line options](#command-line-options)
 - [Your data](#your-data) (single-user files, or accounts with MongoDB)
+- [Sign in with Google and Apple](#sign-in-with-google-and-apple)
 - [Hosting with Docker and Render](#hosting-with-docker-and-render)
 - [How it works](#how-it-works)
 - [Project layout](#project-layout)
@@ -249,20 +250,76 @@ Start the server with a MongoDB URI and every visitor signs in, so each person h
 MONGODB_URI="mongodb://127.0.0.1:27017" LLDPREP_INVITE_CODE="pick-a-code" go run .
 ```
 
-- **Sign-up and sign-in** use a username and password. Passwords are stored as bcrypt hashes. A login lasts 30 days in an `HttpOnly` cookie, and *Settings → Sign out* ends it.
+- **Sign-up and sign-in** use a username and password, or [Google and Apple](#sign-in-with-google-and-apple) if you configure them. Passwords are stored as bcrypt hashes. A login lasts 30 days in an `HttpOnly` cookie, and *Settings → Sign out* ends it.
 - **Each user's progress and code drafts** are stored separately. Everything listed under single-user mode is kept per account.
 - **Set an invite code** with `LLDPREP_INVITE_CODE` when the app is public. Every account can run code on the server, so the code decides who gets one. Without it, anyone can sign up, and the server prints a warning on start.
 - **Moving local progress into an account:** *Export progress* in the local app, then *Import progress* after signing in.
 - Ten wrong passwords in 15 minutes for one username from one IP address block further attempts for a while.
 
-The database has four collections:
+The database has five collections:
 
 | Collection | One document per | Contents |
 |---|---|---|
-| `users` | user | `_id` (username), bcrypt `passwordHash`, `createdAt` |
+| `users` | user | `_id` (username), bcrypt `passwordHash` (absent for Google/Apple-only users), `createdAt` |
+| `identities` | linked Google or Apple account | `_id` (`provider:subject`), `provider`, `subject`, `user`, `email`, `createdAt` |
 | `sessions` | login | `_id` (SHA-256 of the cookie token), `user`, `expiresAt`. MongoDB deletes expired sessions itself (TTL index). |
 | `progress` | user | `_id` (username), `state` (progress, quiz scores, bookmarks, mock history, settings, as a normal document), `updatedAt` |
 | `drafts` | user, exercise, language and step | `_id` (`user/key`), `user`, `key`, `code`, `updatedAt` |
+
+---
+
+## Sign in with Google and Apple
+
+In accounts mode, people can sign in with Google or Apple as well as a username and password. Each provider is switched on by setting its credentials, and its button appears automatically. Both use the standard OpenID Connect authorization-code flow, implemented with the Go standard library (`internal/oauth`):
+
+- **The server verifies every sign-in.** It checks the ID token's signature against the provider's published keys, then the issuer, audience, expiry and a one-time nonce. A signed, 10-minute state cookie ties each callback to the browser that started it, and Google sign-ins also use PKCE.
+- **A first sign-in creates an account,** named after the email address (`priya@example.com` becomes `priya`, or `priya2` if that's taken). Later sign-ins with the same Google or Apple account reach the same user.
+- **The invite code still applies.** If `LLDPREP_INVITE_CODE` is set, new people choose *Create an account*, enter the code, then *Continue with Google/Apple*. Existing users don't need it again.
+- **Existing users can connect Google or Apple** under *Settings → Sign-in methods*. After that, either method opens the same account and the same progress.
+- Accounts are matched by the provider's user id, never by email address, so nobody can take over an account by registering someone else's email elsewhere.
+
+### Environment variables
+
+| Variable | Needed for | Value |
+|---|---|---|
+| `LLDPREP_PUBLIC_URL` | both | Your site's address, e.g. `https://lld-prep.deipayandash.com`. Redirect URIs are built from it, so it must match what you register |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google | From the Google Cloud OAuth client |
+| `APPLE_CLIENT_ID` | Apple | Your **Services ID** (e.g. `com.deipayandash.lldprep.web`) |
+| `APPLE_TEAM_ID`, `APPLE_KEY_ID` | Apple | Your Team ID (top right of the Apple Developer site) and the key's ID |
+| `APPLE_PRIVATE_KEY` | Apple | The contents of the `.p8` key file, including the `BEGIN`/`END` lines. Or use `APPLE_PRIVATE_KEY_FILE` with a path |
+| `LLDPREP_SESSION_SECRET` | optional | Signs the sign-in state cookie. If unset, a random key is created at start-up, and a restart only interrupts sign-ins in progress at that moment |
+
+The redirect URIs to register are `<LLDPREP_PUBLIC_URL>/api/auth/google/callback` and `<LLDPREP_PUBLIC_URL>/api/auth/apple/callback`.
+
+### Set up Google
+
+1. Open the [Google Cloud console](https://console.cloud.google.com/) and create or pick a project.
+2. **APIs & Services → OAuth consent screen:** choose *External*, then fill in the app name, support email and your domain. The `openid` and `email` scopes are all the app asks for.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID:**
+   - application type **Web application**
+   - authorised redirect URI `https://lld-prep.deipayandash.com/api/auth/google/callback`
+   - for local testing, also add `http://127.0.0.1:8080/api/auth/google/callback` and run with `-public-url http://127.0.0.1:8080`
+4. Copy the client ID and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+
+While the consent screen is in *Testing*, only the test users you list can sign in. Publish it when you're ready for everyone.
+
+### Set up Apple
+
+This needs a paid Apple Developer Program membership.
+
+1. In [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list), add an **App ID** with *Sign in with Apple* enabled. This is the "primary" app the web sign-in belongs to.
+2. **Identifiers → Services IDs → +:** create one, e.g. `com.deipayandash.lldprep.web`. This value is your `APPLE_CLIENT_ID`. Enable *Sign in with Apple*, then click *Configure*:
+   - choose the App ID from step 1
+   - add the domain `lld-prep.deipayandash.com`
+   - add the return URL `https://lld-prep.deipayandash.com/api/auth/apple/callback`
+3. **Keys → +:** create a key with *Sign in with Apple* enabled, linked to the same App ID, and download the `.p8` file. Apple only lets you download it once. Note the **Key ID**.
+4. Set `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY`. On Render, paste the whole `.p8` file into the value box. Line breaks are fine, and so are literal `\n`s.
+
+Apple only redirects to `https://` addresses, so test Apple sign-in on the deployed site rather than on `127.0.0.1`. Users can choose *Hide My Email*, in which case Apple gives you a private relay address; the app works the same.
+
+### Testing it
+
+`go test ./internal/oauth` checks token verification and Apple's signed client secret against generated keys. With a MongoDB running, `MONGODB_TEST_URI=mongodb://127.0.0.1:27017 go test -run Social .` runs the whole flow against a fake provider: sign-up, returning sign-in, invite rules, connecting a provider to an existing account, and rejecting forged or replayed callbacks.
 
 ---
 
@@ -352,6 +409,8 @@ Leave out `MONGODB_URI` and set `LLDPREP_PASSWORD` instead. Progress is then wri
 | `GET /api/auth/me` | Mode (`local` or `accounts`), the signed-in user, and whether sign-up needs an invite |
 | `POST /api/auth/signup` · `/api/auth/login` | `{username, password, invite}`; sets the session cookie |
 | `POST /api/auth/logout` | Ends the session |
+| `GET /api/auth/{google,apple}/start` | Starts a sign-in (`?invite=` for sign-ups, `?mode=link` to connect to the signed-in account) |
+| `GET`/`POST /api/auth/{google,apple}/callback` | Where the provider sends the browser back (Apple uses a form POST) |
 | `GET` / `PUT /api/state` | Read and write progress (the signed-in user's, in accounts mode) |
 | `GET` / `PUT` / `DELETE /api/draft/{key}` | Code drafts |
 | `POST /api/run` | Compile and run code: `{kind, id, lang, mode: "run" \| "test", code, step}` |
@@ -366,6 +425,7 @@ In accounts mode, every `/api/` route except `/api/auth/*` needs a signed-in use
 .
 ├── main.go                    server, routes, -verify
 ├── auth.go                    sign-up, sign-in, sessions, login rate limit (accounts mode)
+├── social.go                  Sign in with Google / Apple: start, callback, account linking
 ├── go.mod                     module lldprep (MongoDB driver, x/crypto)
 ├── Dockerfile, docker-entrypoint.sh, render.yaml   hosting
 ├── docs/og-card.html          source of the link-preview image (web/og-image.png)
@@ -373,7 +433,8 @@ In accounts mode, every `/api/` route except `/api/auth/*` needs a signed-in use
 │   ├── content/content.go     loads the plan, lessons, exercises, tutorials, quizzes, mocks; search
 │   ├── runner/                compile/run/test for Java, Go and Python, timeouts, process cleanup
 │   │   └── assets/            TestRunner.java, Go panic guard, test_runner.py + lldtest.py
-│   ├── accounts/mongo.go      MongoDB: users, sessions, per-user progress and drafts
+│   ├── accounts/mongo.go      MongoDB: users, linked identities, sessions, per-user progress and drafts
+│   ├── oauth/                 OpenID Connect for Google and Apple (token verification, Apple client secret)
 │   └── store/store.go         Store interface; atomic JSON and draft files under data/
 ├── web/
 │   ├── index.html, styles.css

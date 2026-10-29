@@ -38,6 +38,7 @@ type auth struct {
 	db         *accounts.Mongo
 	inviteCode string
 	limiter    *loginLimiter
+	social     *social // nil when no Google/Apple credentials are configured
 }
 
 func (au *auth) enabled() bool { return au.db != nil }
@@ -47,13 +48,17 @@ func (au *auth) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/signup", au.handleSignup)
 	mux.HandleFunc("POST /api/auth/login", au.handleLogin)
 	mux.HandleFunc("POST /api/auth/logout", au.handleLogout)
+	au.socialRoutes(mux)
 }
 
 // requireUser protects every /api/ route except /api/auth/*. In local mode it
 // lets everything through as localUser.
 func (au *auth) requireUser(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && !sameOrigin(r) {
+		// Apple's sign-in result arrives as a cross-site form POST; the signed state
+		// cookie, not the Origin header, protects that endpoint.
+		oauthCallback := r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/auth/") && strings.HasSuffix(r.URL.Path, "/callback")
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !oauthCallback && !sameOrigin(r) {
 			http.Error(w, "cross-origin request refused", http.StatusForbidden)
 			return
 		}
@@ -88,9 +93,15 @@ func (au *auth) handleMe(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"mode": "local", "user": localUser})
 		return
 	}
-	out := map[string]any{"mode": "accounts", "inviteRequired": au.inviteCode != ""}
+	out := map[string]any{"mode": "accounts", "inviteRequired": au.inviteCode != "", "providers": au.social.names()}
 	if user, ok := au.sessionUser(r); ok {
 		out["user"] = user
+		linked, err := au.db.Providers(r.Context(), user)
+		if err != nil {
+			log.Printf("providers for %s: %v", user, err)
+		}
+		hasPassword, _ := au.db.HasPassword(r.Context(), user)
+		out["linked"], out["hasPassword"] = linked, hasPassword
 	}
 	writeJSON(w, out)
 }
@@ -171,16 +182,24 @@ func (au *auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (au *auth) startSession(w http.ResponseWriter, r *http.Request, user string) {
-	token, exp, err := au.db.NewSession(r.Context(), user)
-	if err != nil {
+	if err := au.issueSession(w, r, user); err != nil {
 		httpError(w, err)
 		return
+	}
+	writeJSON(w, map[string]string{"user": user})
+}
+
+// issueSession creates a login session and sets its cookie.
+func (au *auth) issueSession(w http.ResponseWriter, r *http.Request, user string) error {
+	token, exp, err := au.db.NewSession(r.Context(), user)
+	if err != nil {
+		return err
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/", Expires: exp,
 		HttpOnly: true, Secure: isHTTPS(r), SameSite: http.SameSiteLaxMode,
 	})
-	writeJSON(w, map[string]string{"user": user})
+	return nil
 }
 
 func (au *auth) handleLogout(w http.ResponseWriter, r *http.Request) {

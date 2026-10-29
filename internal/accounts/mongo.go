@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -38,9 +39,9 @@ func NormalizeUsername(u string) string { return strings.ToLower(strings.TrimSpa
 // Mongo implements store.Store with one progress document and one document
 // per draft for every user.
 type Mongo struct {
-	client                            *mongo.Client
-	users, sessions, progress, drafts *mongo.Collection
-	dummyHash                         []byte
+	client                                        *mongo.Client
+	users, sessions, progress, drafts, identities *mongo.Collection
+	dummyHash                                     []byte
 }
 
 var _ store.Store = (*Mongo)(nil)
@@ -57,11 +58,12 @@ func Connect(ctx context.Context, uri, dbName string) (*Mongo, error) {
 	}
 	db := client.Database(dbName)
 	m := &Mongo{
-		client:   client,
-		users:    db.Collection("users"),
-		sessions: db.Collection("sessions"),
-		progress: db.Collection("progress"),
-		drafts:   db.Collection("drafts"),
+		client:     client,
+		users:      db.Collection("users"),
+		sessions:   db.Collection("sessions"),
+		progress:   db.Collection("progress"),
+		drafts:     db.Collection("drafts"),
+		identities: db.Collection("identities"),
 	}
 	// Expired sessions are removed by MongoDB itself.
 	if _, err := m.sessions.Indexes().CreateOne(ctx, mongo.IndexModel{
@@ -71,6 +73,9 @@ func Connect(ctx context.Context, uri, dbName string) (*Mongo, error) {
 		return nil, err
 	}
 	if _, err := m.drafts.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "user", Value: 1}}}); err != nil {
+		return nil, err
+	}
+	if _, err := m.identities.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "user", Value: 1}}}); err != nil {
 		return nil, err
 	}
 	// Compared against when a username doesn't exist, so a failed login takes
@@ -85,7 +90,7 @@ func (m *Mongo) Close() error { return m.client.Disconnect(context.Background())
 
 type userDoc struct {
 	ID           string    `bson:"_id"`
-	PasswordHash []byte    `bson:"passwordHash"`
+	PasswordHash []byte    `bson:"passwordHash,omitempty"` // empty for Google/Apple-only users
 	CreatedAt    time.Time `bson:"createdAt"`
 }
 
@@ -119,7 +124,114 @@ func (m *Mongo) CheckPassword(ctx context.Context, username, password string) (b
 	if err != nil {
 		return false, err
 	}
+	if len(u.PasswordHash) == 0 { // signed up with Google/Apple: no password to match
+		bcrypt.CompareHashAndPassword(m.dummyHash, []byte(password))
+		return false, nil
+	}
 	return bcrypt.CompareHashAndPassword(u.PasswordHash, []byte(password)) == nil, nil
+}
+
+// HasPassword reports whether the user can sign in with a password.
+func (m *Mongo) HasPassword(ctx context.Context, username string) (bool, error) {
+	var u userDoc
+	err := m.users.FindOne(ctx, bson.D{{Key: "_id", Value: username}}).Decode(&u)
+	if err != nil {
+		return false, err
+	}
+	return len(u.PasswordHash) > 0, nil
+}
+
+// ---- external identities (Google, Apple) ----
+
+var ErrIdentityLinked = errors.New("that account is already connected to another user")
+
+type identityDoc struct {
+	ID        string    `bson:"_id"` // provider + ":" + subject
+	Provider  string    `bson:"provider"`
+	Subject   string    `bson:"subject"`
+	User      string    `bson:"user"`
+	Email     string    `bson:"email,omitempty"`
+	CreatedAt time.Time `bson:"createdAt"`
+}
+
+func identityID(provider, subject string) string { return provider + ":" + subject }
+
+// FindIdentity returns the user an external identity is linked to.
+func (m *Mongo) FindIdentity(ctx context.Context, provider, subject string) (string, bool, error) {
+	var d identityDoc
+	err := m.identities.FindOne(ctx, bson.D{{Key: "_id", Value: identityID(provider, subject)}}).Decode(&d)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return d.User, true, nil
+}
+
+// LinkIdentity connects an external identity to a user. An identity belongs to
+// at most one user; linking it again to the same user is a no-op.
+func (m *Mongo) LinkIdentity(ctx context.Context, provider, subject, user, email string) error {
+	_, err := m.identities.InsertOne(ctx, identityDoc{
+		ID: identityID(provider, subject), Provider: provider, Subject: subject,
+		User: user, Email: email, CreatedAt: time.Now().UTC(),
+	})
+	if mongo.IsDuplicateKeyError(err) {
+		owner, _, ferr := m.FindIdentity(ctx, provider, subject)
+		if ferr == nil && owner == user {
+			return nil
+		}
+		return ErrIdentityLinked
+	}
+	return err
+}
+
+// Providers lists the external providers linked to a user, sorted.
+func (m *Mongo) Providers(ctx context.Context, user string) ([]string, error) {
+	cur, err := m.identities.Find(ctx, bson.D{{Key: "user", Value: user}}, options.Find().SetSort(bson.D{{Key: "provider", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	var docs []identityDoc
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, d := range docs {
+		if len(out) == 0 || out[len(out)-1] != d.Provider {
+			out = append(out, d.Provider)
+		}
+	}
+	return out, nil
+}
+
+var notUsernameChars = regexp.MustCompile(`[^a-z0-9._-]+`)
+
+// CreateExternalUser creates a password-less user for a Google/Apple sign-up,
+// with a username derived from `hint` (usually the email's local part) and a
+// numeric suffix if that's taken. It returns the username.
+func (m *Mongo) CreateExternalUser(ctx context.Context, hint string) (string, error) {
+	base := strings.Trim(notUsernameChars.ReplaceAllString(strings.ToLower(hint), "."), "._-")
+	if len(base) > 28 {
+		base = base[:28]
+	}
+	if len(base) < 3 {
+		base += "user" // "" -> "user", "jo" -> "jouser"
+	}
+	for i := 1; i <= 50; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s%d", base, i)
+		}
+		_, err := m.users.InsertOne(ctx, userDoc{ID: name, CreatedAt: time.Now().UTC()})
+		if err == nil {
+			return name, nil
+		}
+		if !mongo.IsDuplicateKeyError(err) {
+			return "", err
+		}
+	}
+	return "", errors.New("could not find a free username")
 }
 
 // ---- sessions ----
@@ -259,4 +371,9 @@ func (m *Mongo) DeleteDraft(ctx context.Context, user, key string) error {
 	}
 	_, err = m.drafts.DeleteOne(ctx, bson.D{{Key: "_id", Value: id}})
 	return err
+}
+
+// DropForTests deletes the whole database. Only tests call it.
+func (m *Mongo) DropForTests(ctx context.Context) error {
+	return m.users.Database().Drop(ctx)
 }

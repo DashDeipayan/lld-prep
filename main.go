@@ -82,7 +82,19 @@ func main() {
 		defer db.Close()
 		au.db, st = db, db
 		log.Printf("accounts mode: users and progress in MongoDB database %q", *mongoDB)
+		if au.social, err = socialFromEnv(strings.TrimRight(*publicURL, "/")); err != nil {
+			log.Fatalf("configuring Google/Apple sign-in: %v", err)
+		}
+		if names := au.social.names(); len(names) > 0 {
+			log.Printf("social sign-in: %s (callbacks at <public url>/api/auth/<provider>/callback)", strings.Join(names, ", "))
+			if *publicURL == "" {
+				log.Printf("WARNING: set -public-url / $LLDPREP_PUBLIC_URL so sign-in redirect URIs match what you registered with the provider.")
+			}
+		}
 	} else {
+		if os.Getenv("GOOGLE_CLIENT_ID") != "" || os.Getenv("APPLE_CLIENT_ID") != "" {
+			log.Printf("WARNING: Google/Apple sign-in needs accounts mode; set -mongo / $MONGODB_URI. Ignoring the provider settings.")
+		}
 		files, err := store.OpenFiles(*dataDir)
 		if err != nil {
 			log.Fatalf("opening data dir: %v", err)
