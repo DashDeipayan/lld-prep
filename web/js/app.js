@@ -320,7 +320,7 @@ function SearchView({ q }) {
 
 function Account() {
   const [busy, setBusy] = useState(false);
-  // Set by the server after "Connect Google/Apple" (success or failure).
+  // Set by the server after "Connect Google/GitHub" (success or failure).
   const [notice] = useState(() => {
     const connected = takeHashParam('connected');
     const error = takeHashParam('auth_error');

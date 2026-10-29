@@ -83,7 +83,7 @@ func main() {
 		au.db, st = db, db
 		log.Printf("accounts mode: users and progress in MongoDB database %q", *mongoDB)
 		if au.social, err = socialFromEnv(strings.TrimRight(*publicURL, "/")); err != nil {
-			log.Fatalf("configuring Google/Apple sign-in: %v", err)
+			log.Fatalf("configuring Google/GitHub sign-in: %v", err)
 		}
 		if names := au.social.names(); len(names) > 0 {
 			log.Printf("social sign-in: %s (callbacks at <public url>/api/auth/<provider>/callback)", strings.Join(names, ", "))
@@ -92,8 +92,8 @@ func main() {
 			}
 		}
 	} else {
-		if os.Getenv("GOOGLE_CLIENT_ID") != "" || os.Getenv("APPLE_CLIENT_ID") != "" {
-			log.Printf("WARNING: Google/Apple sign-in needs accounts mode; set -mongo / $MONGODB_URI. Ignoring the provider settings.")
+		if os.Getenv("GOOGLE_CLIENT_ID") != "" || os.Getenv("GITHUB_CLIENT_ID") != "" {
+			log.Printf("WARNING: Google/GitHub sign-in needs accounts mode; set -mongo / $MONGODB_URI. Ignoring the provider settings.")
 		}
 		files, err := store.OpenFiles(*dataDir)
 		if err != nil {

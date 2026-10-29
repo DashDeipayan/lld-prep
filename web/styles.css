@@ -411,15 +411,15 @@ pre.mermaid:not([data-processed]) { color: var(--text-3); font-size: .8rem; text
 .unavailable { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
 .unavailable p { margin: 4px 0; }
 
-/* ---- Google / Apple sign-in ---- */
+/* ---- Google / GitHub sign-in ---- */
 .provider-list { display: grid; gap: 10px; margin: 16px 0 4px; }
 .provider-btn { width: 100%; justify-content: center; gap: 10px; font-weight: 600; }
 .provider-google { background: #fff; color: #1f1f1f; border-color: #dadce0; }
 .provider-google:hover:not(:disabled) { background: #f8f9fa; }
-.provider-apple { background: #000; color: #fff; border-color: #000; }
-.provider-apple:hover:not(:disabled) { background: #1d1d1f; }
-html[data-theme="dark"] .provider-apple { background: #fff; color: #000; border-color: #fff; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .provider-apple { background: #fff; color: #000; border-color: #fff; } }
+.provider-github { background: #24292f; color: #fff; border-color: #24292f; }
+.provider-github:hover:not(:disabled) { background: #32383f; }
+html[data-theme="dark"] .provider-github { border-color: #57606a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .provider-github { border-color: #57606a; } }
 .auth-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 4px; color: var(--text-3); font-size: .8rem; }
 .auth-divider::before, .auth-divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 .auth-ok { color: var(--ok); background: var(--ok-soft); border-radius: 8px; padding: 8px 12px; font-size: .9rem; }

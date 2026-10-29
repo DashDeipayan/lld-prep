@@ -38,7 +38,7 @@ type auth struct {
 	db         *accounts.Mongo
 	inviteCode string
 	limiter    *loginLimiter
-	social     *social // nil when no Google/Apple credentials are configured
+	social     *social // nil when no Google/GitHub credentials are configured
 }
 
 func (au *auth) enabled() bool { return au.db != nil }
@@ -55,10 +55,7 @@ func (au *auth) routes(mux *http.ServeMux) {
 // lets everything through as localUser.
 func (au *auth) requireUser(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Apple's sign-in result arrives as a cross-site form POST; the signed state
-		// cookie, not the Origin header, protects that endpoint.
-		oauthCallback := r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/auth/") && strings.HasSuffix(r.URL.Path, "/callback")
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && !oauthCallback && !sameOrigin(r) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !sameOrigin(r) {
 			http.Error(w, "cross-origin request refused", http.StatusForbidden)
 			return
 		}

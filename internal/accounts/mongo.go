@@ -90,7 +90,7 @@ func (m *Mongo) Close() error { return m.client.Disconnect(context.Background())
 
 type userDoc struct {
 	ID           string    `bson:"_id"`
-	PasswordHash []byte    `bson:"passwordHash,omitempty"` // empty for Google/Apple-only users
+	PasswordHash []byte    `bson:"passwordHash,omitempty"` // empty for Google/GitHub-only users
 	CreatedAt    time.Time `bson:"createdAt"`
 }
 
@@ -124,7 +124,7 @@ func (m *Mongo) CheckPassword(ctx context.Context, username, password string) (b
 	if err != nil {
 		return false, err
 	}
-	if len(u.PasswordHash) == 0 { // signed up with Google/Apple: no password to match
+	if len(u.PasswordHash) == 0 { // signed up with Google/GitHub: no password to match
 		bcrypt.CompareHashAndPassword(m.dummyHash, []byte(password))
 		return false, nil
 	}
@@ -141,7 +141,7 @@ func (m *Mongo) HasPassword(ctx context.Context, username string) (bool, error) 
 	return len(u.PasswordHash) > 0, nil
 }
 
-// ---- external identities (Google, Apple) ----
+// ---- external identities (Google, GitHub) ----
 
 var ErrIdentityLinked = errors.New("that account is already connected to another user")
 
@@ -207,8 +207,8 @@ func (m *Mongo) Providers(ctx context.Context, user string) ([]string, error) {
 
 var notUsernameChars = regexp.MustCompile(`[^a-z0-9._-]+`)
 
-// CreateExternalUser creates a password-less user for a Google/Apple sign-up,
-// with a username derived from `hint` (usually the email's local part) and a
+// CreateExternalUser creates a password-less user for a Google/GitHub sign-up,
+// with a username derived from `hint` (a GitHub login or the email's local part) and a
 // numeric suffix if that's taken. It returns the username.
 func (m *Mongo) CreateExternalUser(ctx context.Context, hint string) (string, error) {
 	base := strings.Trim(notUsernameChars.ReplaceAllString(strings.ToLower(hint), "."), "._-")
