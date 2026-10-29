@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy · LLD Prep</title>
+  <meta name="description" content="What LLD Prep stores about you, why, and how to get it deleted.">
+  <link rel="canonical" href="__ORIGIN__/privacy">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    try {
+      const t = JSON.parse(localStorage.getItem('lldprep.theme') || 'null');
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+  <style>
+    .policy { max-width: 760px; margin: 0 auto; padding: 40px 20px 64px; }
+    .policy header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; }
+    .policy .brand { padding: 0; }
+    .policy h1 { margin: 0 0 6px; }
+    .policy h2 { margin: 2em 0 .5em; font-size: 1.2rem; }
+    .policy p, .policy li { color: var(--text); }
+    .policy ul { padding-left: 1.3em; }
+    .policy li { margin: .35em 0; }
+    .policy table { border-collapse: collapse; width: 100%; margin: .8em 0; font-size: .92rem; }
+    .policy th, .policy td { text-align: left; vertical-align: top; padding: 8px 10px; border: 1px solid var(--border); }
+    .policy th { background: var(--surface-2); font-weight: 600; }
+    .policy .table-wrap { overflow-x: auto; }
+    .policy code { font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+    .policy footer { margin-top: 3em; padding-top: 1.2em; border-top: 1px solid var(--border); font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <main class="policy">
+    <header>
+      <a class="brand" href="/">
+        <span class="logo"><svg viewBox="0 0 32 32" width="26" height="26"><rect width="32" height="32" rx="7" fill="currentColor"/><path d="M9 9h5v5H9zM18 9h5v5h-5zM13.5 18h5v5h-5z" fill="var(--bg)"/></svg></span>
+        <span><b>LLD Prep</b><small>14 days to the offer</small></span>
+      </a>
+      <a class="btn" href="/">Back to the app</a>
+    </header>
+
+    <h1>Privacy Policy</h1>
+    <p class="muted">Last updated: 30 October 2026</p>
+
+    <p>LLD Prep (“the app”, at <a href="__ORIGIN__">__ORIGIN__</a>) is a study tool for low-level design interviews. This page explains what the app stores about you, why, and how to get it deleted. In short: it keeps only what it needs to save your progress, it doesn’t track you, and it never sells or shares your data.</p>
+
+    <h2>What we store</h2>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Data</th><th>Why</th></tr>
+      <tr><td><b>Your username</b>, and a <b>password hash</b> if you sign up with a password (passwords are hashed with bcrypt and never stored or logged as text)</td><td>To create your account and sign you in</td></tr>
+      <tr><td>If you sign in with <b>Google or GitHub</b>: that provider’s ID for your account, and your email address</td><td>To recognise you when you sign in again. Your account is matched by the provider’s ID, and the email is used to suggest your username</td></tr>
+      <tr><td><b>Your progress</b>: completed lessons and exercises, quiz scores, bookmarks, mock-interview results, plan start date and preferred language</td><td>This is the point of the app: so you can pick up where you left off on any device</td></tr>
+      <tr><td><b>Your code</b>: the drafts you write in the exercise editor</td><td>So your work is saved between visits</td></tr>
+      <tr><td><b>Sign-in sessions</b>: a random token (only a SHA-256 hash of it is stored) with an expiry time</td><td>To keep you signed in. Sessions expire after 30 days, or when you sign out</td></tr>
+    </table>
+    </div>
+
+    <h2>What we get from Google and GitHub</h2>
+    <ul>
+      <li><b>Google:</b> the app asks only for the basic <code>openid</code> and <code>email</code> permissions. It receives your Google account ID and email address, and nothing else: no contacts, files, calendar or mail.</li>
+      <li><b>GitHub:</b> the app asks only for read-only <code>read:user</code> and <code>user:email</code> access. It reads your GitHub user ID, username and primary verified email address. It can’t see or change your repositories, and it can’t act on your behalf.</li>
+      <li>The access tokens that Google or GitHub hand back are used once, during sign-in, and are <b>not stored</b>.</li>
+    </ul>
+
+    <h2>Code you run</h2>
+    <p>When you press <i>Run</i> or <i>Run tests</i>, your code is sent to the server, compiled and run in a temporary folder together with the exercise’s tests, and the folder is <b>deleted as soon as the run finishes</b>. Only the draft in your editor is kept, as described above.</p>
+
+    <h2>Cookies and browser storage</h2>
+    <ul>
+      <li><code>lldprep_session</code>: keeps you signed in. It’s <code>HttpOnly</code>, so page scripts can’t read it, and it’s only sent over HTTPS.</li>
+      <li><code>lldprep_oauth</code>: a short-lived (10-minute) cookie used only while you’re signing in with Google or GitHub. It protects that sign-in from being hijacked.</li>
+      <li><code>lldprep.theme</code> in your browser’s local storage: remembers whether you chose the light or the dark theme. It never leaves your browser.</li>
+    </ul>
+    <p>There are no advertising, analytics or tracking cookies.</p>
+
+    <h2>What we don’t do</h2>
+    <ul>
+      <li>No analytics, tracking pixels, advertising or third-party scripts. The page’s code and libraries are all served from this site.</li>
+      <li>We don’t sell, rent or share your data with anyone, and we don’t use it for anything except running the app for you.</li>
+      <li>We don’t send you email.</li>
+    </ul>
+
+    <h2>Where the data is kept</h2>
+    <p>The app is hosted on <a href="https://render.com/privacy" rel="noopener">Render</a>, its database is <a href="https://www.mongodb.com/legal/privacy" rel="noopener">MongoDB Atlas</a>, and traffic passes through <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare</a>. These providers store or carry the data above only to run the service. Their servers may be outside your country. Data is encrypted in transit (HTTPS), and the database is protected by credentials.</p>
+
+    <h2>How long we keep it</h2>
+    <p>Your account, progress and code are kept until you ask for them to be deleted. Sign-in sessions are deleted automatically when they expire.</p>
+
+    <h2>Your choices and rights</h2>
+    <ul>
+      <li><b>Get a copy:</b> <i>Settings → Export progress</i> downloads your progress as a JSON file at any time.</li>
+      <li><b>Reset:</b> <i>Settings → Reset progress</i> clears your progress, quiz scores, bookmarks and mock history.</li>
+      <li><b>Delete your account:</b> contact us (below) from the email address or account you signed up with, and we’ll delete your account, progress, code, linked sign-ins and sessions.</li>
+      <li><b>Disconnect Google or GitHub on their side:</b> you can revoke the app’s access at any time from your <a href="https://myaccount.google.com/connections" rel="noopener">Google account</a> or your <a href="https://github.com/settings/applications" rel="noopener">GitHub settings</a>.</li>
+    </ul>
+
+    <h2>Children</h2>
+    <p>The app is meant for software engineers preparing for job interviews, and isn’t aimed at children under 13.</p>
+
+    <h2>Changes</h2>
+    <p>If this policy changes, the new version will be posted on this page with a new “Last updated” date.</p>
+
+    <h2>Contact</h2>
+    <p>For questions or deletion requests: __CONTACT__.</p>
+
+    <footer class="muted">LLD Prep · <a href="/">Open the app</a></footer>
+  </main>
+</body>
+</html>

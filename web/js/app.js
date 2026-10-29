@@ -403,6 +403,7 @@ function Settings() {
       ${AUTH.mode === 'accounts'
         ? html`<p class="muted">Your progress and code are saved to your account. Export makes a portable backup, and Import moves progress over from another copy of the app.</p>`
         : html`<p class="muted">Progress lives in <code>data/progress.json</code> and your code in <code>data/drafts/</code>, next to the app. Export makes a portable backup.</p>`}
+      ${AUTH.mode === 'accounts' ? html`<p class="muted small">What's stored and how to have it deleted: <a href="/privacy">Privacy Policy</a>.</p>` : null}
       <div class="btn-row">
         <button class="btn" onClick=${exportData}>Export progress</button>
         <button class="btn" onClick=${() => fileRef.current.click()}>Import progress</button>

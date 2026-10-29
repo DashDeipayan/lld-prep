@@ -417,7 +417,7 @@ func TestSocialUIServer(t *testing.T) {
 		idp.sub, idp.email, idp.login = r.Form.Get("sub"), r.Form.Get("email"), r.Form.Get("login")
 		idp.mu.Unlock()
 	})
-	mux.Handle("/", staticHandler(os.DirFS("web"), ""))
+	mux.Handle("/", staticHandler(os.DirFS("web"), "", ""))
 	srv := &http.Server{Addr: addr, Handler: au.requireUser(mux)}
 	go srv.ListenAndServe()
 	defer srv.Close()
