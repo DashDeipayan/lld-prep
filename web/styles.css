@@ -390,3 +390,19 @@ pre.mermaid:not([data-processed]) { color: var(--text-3); font-size: .8rem; text
   .hero-actions .btn { height: auto; min-height: 42px; white-space: normal; text-align: left; padding: 8px 14px; }
   .wb-toolbar .file-name { display: none; }
 }
+
+/* ---- sign-in (accounts mode) ---- */
+.auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.auth-card { width: 100%; max-width: 400px; margin: 0; padding: 28px; }
+.auth-card h1 { font-size: 1.45rem; margin-top: 18px; }
+.auth-brand { display: flex; gap: 10px; align-items: center; }
+.auth-brand .logo { color: var(--accent); display: flex; }
+.auth-brand b { display: block; }
+.auth-brand small { display: block; color: var(--text-3); font-size: .75rem; }
+.field { display: flex; flex-direction: column; gap: 4px; margin: 14px 0; font-size: .9rem; font-weight: 550; }
+.field input { font: inherit; font-weight: 400; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; }
+.field input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.auth-error { color: var(--bad); background: var(--bad-soft); border-radius: 8px; padding: 8px 12px; font-size: .9rem; }
+.auth-submit { width: 100%; justify-content: center; margin-top: 6px; }
+.auth-switch { text-align: center; margin: 16px 0 0; font-size: .9rem; }
+.account-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

@@ -1,14 +1,14 @@
 # Render Blueprint: New > Blueprint, point it at this repo.
+# Accounts mode: users sign in and progress lives in MongoDB (e.g. a free
+# MongoDB Atlas cluster), so the free instance is enough and no disk is needed.
 services:
   - type: web
     name: lldprep
     runtime: docker
-    plan: starter            # a persistent disk needs a paid instance
+    plan: free
     healthCheckPath: /healthz
     envVars:
-      - key: LLDPREP_PASSWORD
-        sync: false          # Render asks for the value when you create it
-    disk:
-      name: lldprep-data
-      mountPath: /data
-      sizeGB: 1
+      - key: MONGODB_URI           # mongodb+srv://user:pass@cluster.../?retryWrites=true&w=majority
+        sync: false                # Render asks for the value when you create it
+      - key: LLDPREP_INVITE_CODE   # people need this code to create an account
+        sync: false
