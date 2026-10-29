@@ -11,7 +11,7 @@ import { resetMermaidTheme } from './markdown.js';
 import { ExerciseView, TutorialView } from './code.js';
 import { QuizView } from './quiz.js';
 import { MocksView, MockView } from './mock.js';
-import { SignIn } from './auth.js';
+import { SignIn, ProviderButton, PROVIDER_LABEL, startProvider, takeHashParam } from './auth.js';
 
 let PLAN = null;
 export const plan = () => PLAN;
@@ -320,17 +320,38 @@ function SearchView({ q }) {
 
 function Account() {
   const [busy, setBusy] = useState(false);
+  // Set by the server after "Connect Google/Apple" (success or failure).
+  const [notice] = useState(() => {
+    const connected = takeHashParam('connected');
+    const error = takeHashParam('auth_error');
+    if (error) return { bad: true, text: error };
+    if (connected) return { bad: false, text: `${PROVIDER_LABEL[connected] || connected} is connected. You can now sign in with it.` };
+    return null;
+  });
   const signOut = async () => {
     setBusy(true);
     await api.logout().catch(() => {});
     location.reload();
   };
+  const linked = AUTH.linked || [];
+  const providers = AUTH.providers || [];
   return html`<section class="card">
     <h2>Account</h2>
     <div class="account-row">
       <span>Signed in as <b>${AUTH.user}</b></span>
       <button class="btn" onClick=${signOut} disabled=${busy}>Sign out</button>
     </div>
+    ${notice ? html`<p class=${notice.bad ? 'auth-error' : 'auth-ok'} role="status">${notice.text}</p>` : null}
+    ${providers.length ? html`
+      <h3 class="account-sub">Sign-in methods</h3>
+      <ul class="sign-in-methods">
+        <li><span>Username and password</span>${AUTH.hasPassword ? html`<span class="chip ok">On</span>` : html`<span class="muted small">Not set (you signed up with ${linked.map((p) => PROVIDER_LABEL[p]).join(' / ')})</span>`}</li>
+        ${providers.map((p) => html`<li>
+          <span>${PROVIDER_LABEL[p]}</span>
+          ${linked.includes(p) ? html`<span class="chip ok">Connected</span>`
+            : html`<${ProviderButton} provider=${p} label=${'Connect ' + PROVIDER_LABEL[p]} onClick=${() => startProvider(p, { mode: 'link' })} />`}
+        </li>`)}
+      </ul>` : null}
   </section>`;
 }
 
@@ -445,7 +466,7 @@ const root = document.getElementById('app');
 async function boot() {
   AUTH = await api.me();
   if (AUTH.mode === 'accounts' && !AUTH.user) {
-    render(html`<${SignIn} inviteRequired=${AUTH.inviteRequired} onSignedIn=${() => boot().catch(bootFailed)} />`, root);
+    render(html`<${SignIn} inviteRequired=${AUTH.inviteRequired} providers=${AUTH.providers || []} onSignedIn=${() => boot().catch(bootFailed)} />`, root);
     return;
   }
   const [p, s] = await Promise.all([api.plan(), loadState()]);
