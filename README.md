@@ -212,6 +212,7 @@ go run . [flags]
 | `-mongo` | `$MONGODB_URI` | MongoDB connection string. Turns on [accounts mode](#accounts-mode-mongodb): sign-in and separate progress per user. |
 | `-mongo-db` | `$MONGODB_DB` or `lldprep` | Database name in accounts mode. |
 | `-invite` | `$LLDPREP_INVITE_CODE` | In accounts mode, the code people must enter to create an account. |
+| `-contact-email` | `$LLDPREP_CONTACT_EMAIL` | The address shown on the privacy page for questions and deletion requests. If unset, the page links to the project's GitHub issues. |
 | `-public-url` | `$LLDPREP_PUBLIC_URL` | The site's public address, e.g. `https://lld-prep.deipayandash.com`, used for absolute URLs in link previews. If unset, it's taken from each request's host. |
 | `-dev` | off | Serve `web/` and `content/` from disk and reload content on every request, for editing. |
 | `-verify` | off | Content check: run every reference solution against its tests in every language, then exit. |
@@ -280,6 +281,10 @@ In accounts mode, people can sign in with Google or GitHub as well as a username
 - **Existing users can connect Google or GitHub** under *Settings → Sign-in methods*. After that, any of their methods opens the same account and the same progress.
 - Accounts are matched by the provider's user id (GitHub's numeric id survives renames), never by email address, so nobody can take over an account through a matching email.
 
+### Privacy policy
+
+Google needs a privacy policy link before you can publish the sign-in app. The app serves one at `<LLDPREP_PUBLIC_URL>/privacy` (from `web/privacy.html`). It describes exactly what's stored and lets people ask for deletion. It's public even when `LLDPREP_PASSWORD` is set, so Google can read it. Set `LLDPREP_CONTACT_EMAIL` to the address people should write to. The sign-in page and Settings link to it.
+
 ### Environment variables
 
 | Variable | Needed for | Value |
@@ -287,6 +292,7 @@ In accounts mode, people can sign in with Google or GitHub as well as a username
 | `LLDPREP_PUBLIC_URL` | both | Your site's address, e.g. `https://lld-prep.deipayandash.com`. Redirect URLs are built from it, so it must match what you register |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google | From the Google Cloud OAuth client |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | GitHub | From the GitHub OAuth App |
+| `LLDPREP_CONTACT_EMAIL` | recommended | The contact address on the privacy page |
 | `LLDPREP_SESSION_SECRET` | optional | Signs the sign-in state cookie. If unset, a random key is created at start-up, and a restart only interrupts sign-ins in progress at that moment |
 
 The callback URLs to register are `<LLDPREP_PUBLIC_URL>/api/auth/google/callback` and `<LLDPREP_PUBLIC_URL>/api/auth/github/callback`.
@@ -298,7 +304,7 @@ The callback URLs to register are `<LLDPREP_PUBLIC_URL>/api/auth/google/callback
    - app name and support email
    - audience **External**
    - your contact email
-3. **Branding:** under *Authorized domains*, add `deipayandash.com`.
+3. **Branding:** fill in the *Application home page* (`https://lld-prep.deipayandash.com`) and the *Application privacy policy link* (`https://lld-prep.deipayandash.com/privacy`), and under *Authorized domains*, add `deipayandash.com`. Leave the logo empty, or Google will ask for a brand review. *Publish app* stays greyed out until Branding is complete.
 4. **Audience:** while the app is in *Testing*, only the *Test users* you list can sign in. Add yourself, and click *Publish app* when you're ready for everyone. `openid` and `email` are basic scopes, so no Google review is needed.
 5. **Clients → Create client:**
    - type **Web application**

@@ -48,6 +48,7 @@ func main() {
 	mongoURI := flag.String("mongo", os.Getenv("MONGODB_URI"), "MongoDB URI: enables sign-in and per-user progress; defaults to $MONGODB_URI")
 	mongoDB := flag.String("mongo-db", envOr("MONGODB_DB", "lldprep"), "MongoDB database name; defaults to $MONGODB_DB or lldprep")
 	invite := flag.String("invite", os.Getenv("LLDPREP_INVITE_CODE"), "with -mongo: code required to sign up; defaults to $LLDPREP_INVITE_CODE")
+	contact := flag.String("contact-email", os.Getenv("LLDPREP_CONTACT_EMAIL"), "email shown on the privacy page for questions and deletion requests; defaults to $LLDPREP_CONTACT_EMAIL")
 	publicURL := flag.String("public-url", os.Getenv("LLDPREP_PUBLIC_URL"), "public address used in link previews, e.g. https://lld-prep.example.com; defaults to $LLDPREP_PUBLIC_URL, else the request's host")
 	flag.Parse()
 
@@ -107,7 +108,7 @@ func main() {
 	a.routes(mux)
 	au.routes(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "ok") })
-	mux.Handle("/", staticHandler(webFS, strings.TrimRight(*publicURL, "/")))
+	mux.Handle("/", staticHandler(webFS, strings.TrimRight(*publicURL, "/"), *contact))
 	handler := au.requireUser(mux)
 	public := !isLoopback(*addr)
 	if *password != "" {
@@ -161,7 +162,7 @@ func isLoopback(addr string) bool {
 // any username is accepted.
 func basicAuth(password string, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/healthz" || previewAssets[r.URL.Path] {
+		if r.URL.Path == "/healthz" || previewAssets[r.URL.Path] || r.URL.Path == "/privacy" || r.URL.Path == "/privacy.html" || r.URL.Path == "/styles.css" {
 			h.ServeHTTP(w, r)
 			return
 		}
@@ -176,18 +177,31 @@ func basicAuth(password string, h http.Handler) http.Handler {
 }
 
 // previewAssets are served without the -password prompt so that link-preview
-// crawlers (WhatsApp, Slack, LinkedIn...) can fetch the image and icons.
+// crawlers (WhatsApp, Slack, LinkedIn...) can fetch the image and icons. The
+// privacy page is public too: Google's sign-in review needs to read it.
 var previewAssets = map[string]bool{"/og-image.png": true, "/favicon.svg": true, "/apple-touch-icon.png": true}
 
+// pages are HTML files served at clean URLs, with their __ORIGIN__ (and
+// __CONTACT__) placeholders filled in: link-preview tags and the privacy page
+// need absolute URLs.
+var pages = map[string]string{"/": "index.html", "/privacy": "privacy.html"}
+
 // staticHandler serves web/. Browsers may cache the vendored libraries but
-// always revalidate the app's own files, so edits and upgrades show up
-// immediately. index.html gets its __ORIGIN__ placeholders filled in, because
-// link-preview tags need absolute URLs.
-func staticHandler(webFS fs.FS, publicURL string) http.Handler {
+// always revalidate the app's own files, so edits and upgrades show up immediately.
+func staticHandler(webFS fs.FS, publicURL, contactEmail string) http.Handler {
 	files := http.FileServer(http.FS(webFS))
+	contact := `<a href="https://github.com/DashDeipayan/lld-prep/issues">open an issue on the project’s GitHub page</a>`
+	if contactEmail != "" {
+		e := html.EscapeString(contactEmail)
+		contact = `email <a href="mailto:` + e + `">` + e + `</a>`
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			page, err := fs.ReadFile(webFS, "index.html")
+		if r.URL.Path == "/privacy.html" {
+			http.Redirect(w, r, "/privacy", http.StatusMovedPermanently)
+			return
+		}
+		if name, ok := pages[r.URL.Path]; ok {
+			page, err := fs.ReadFile(webFS, name)
 			if err != nil {
 				httpError(w, err)
 				return
@@ -200,9 +214,11 @@ func staticHandler(webFS fs.FS, publicURL string) http.Handler {
 				}
 				origin = scheme + "://" + r.Host
 			}
+			page = bytes.ReplaceAll(page, []byte("__ORIGIN__"), []byte(html.EscapeString(origin)))
+			page = bytes.ReplaceAll(page, []byte("__CONTACT__"), []byte(contact))
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.Header().Set("Cache-Control", "no-cache")
-			w.Write(bytes.ReplaceAll(page, []byte("__ORIGIN__"), []byte(html.EscapeString(origin))))
+			w.Write(page)
 			return
 		}
 		switch {

@@ -116,6 +116,7 @@ export function SignIn({ inviteRequired, providers = [], onSignedIn }) {
         ${signup ? 'Already have an account? ' : 'New here? '}
         <a href="#" onClick=${(e) => { e.preventDefault(); switchMode(); }}>${signup ? 'Sign in' : 'Create an account'}</a>
       </p>
+      <p class="auth-legal muted small">By continuing you agree to how we handle your data: <a href="/privacy">Privacy Policy</a>.</p>
     </form>
   </div>`;
 }
