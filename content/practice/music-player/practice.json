@@ -1,13 +1,27 @@
 {
   "title": "Practice: Design a Music Player",
-  "summary": "A Spotify-style player done step by step: library and playlists, a State-pattern player, a play queue with shuffle and repeat, observers, output adapters and the track-ended race.",
+  "summary": "A Spotify-style player done step by step: library and playlists, a State-pattern player, a play queue with shuffle and repeat, observers, audio device selection through adapters, and the track-ended race.",
   "difficulty": "medium",
   "minutes": 75,
-  "tags": ["state", "observer", "strategy", "command"],
+  "tags": [
+    "state",
+    "observer",
+    "adapter",
+    "command"
+  ],
   "related": [
-    { "type": "lesson", "id": "pattern-state" },
-    { "type": "lesson", "id": "pattern-command" },
-    { "type": "lesson", "id": "pattern-observer" }
+    {
+      "type": "lesson",
+      "id": "pattern-state"
+    },
+    {
+      "type": "lesson",
+      "id": "pattern-command"
+    },
+    {
+      "type": "lesson",
+      "id": "pattern-observer"
+    }
   ],
   "steps": [
     {
@@ -15,14 +29,16 @@
       "doc": "steps/1.md",
       "hints": [
         "\"Music player\" can mean a streaming service (system design) or the player object (LLD). Pin that down first.",
-        "Walk through what a user does with the buttons: play, pause, next, previous, shuffle, repeat. Each one is a requirement."
+        "Walk through what a user does with the buttons: play, pause, next, previous, shuffle, repeat. Each one is a requirement.",
+        "Where does the sound come out? Ask what happens when the user picks another device mid-song, and when that device disconnects."
       ],
       "checklist": [
         "Scope pinned: in-process player and library, not a streaming backend",
         "Library, playlists and a play queue",
         "Playback controls including previous's \"restart if > 3s\" behaviour",
         "Shuffle and repeat (off / one / all) semantics",
-        "Something that reacts to playback: UI, now-playing, scrobbling"
+        "Something that reacts to playback: UI, now-playing, scrobbling",
+        "Audio device selection: list devices, switch mid-song keeping position and play/pause, fall back to the speaker and pause on disconnect"
       ]
     },
     {
@@ -30,13 +46,15 @@
       "doc": "steps/2.md",
       "hints": [
         "Separate **catalog** objects (song, album, playlist) from **playback** objects (queue, player, output).",
-        "Is a playlist the same thing as the queue? What happens to the playlist when you shuffle?"
+        "Is a playlist the same thing as the queue? What happens to the playlist when you shuffle?",
+        "A device in the picker (name, type) is not the same thing as the object that plays audio on it. Which entity maps one to the other?"
       ],
       "checklist": [
         "Song as an immutable value object; Album/Artist/Playlist in the catalog",
         "PlayQueue separate from Playlist",
         "Player with an explicit state",
-        "RepeatMode enum, and an AudioOutput abstraction"
+        "RepeatMode enum, and an AudioOutput abstraction",
+        "AudioDevice + DeviceType, one adapter per device SDK, and a DeviceManager for the connected devices"
       ]
     },
     {
@@ -50,7 +68,8 @@
         "Player → PlayQueue, PlayerState, AudioOutput, listeners",
         "Playlist holds song references, the queue holds playback order",
         "Interfaces: PlayerState, AudioOutput, PlayerListener",
-        "Multiplicities (playlist * — * song)"
+        "Multiplicities (playlist * — * song)",
+        "Adapters (Cast, Bluetooth) wrapping vendor SDKs; DeviceManager owned by Player"
       ]
     },
     {
@@ -58,13 +77,15 @@
       "doc": "steps/4.md",
       "hints": [
         "Draw a table with the states as rows and the buttons as columns. Fill every cell.",
-        "If the cells are full of `if (state == …)` checks spread over many methods, that's the signal for the State pattern."
+        "If the cells are full of `if (state == …)` checks spread over many methods, that's the signal for the State pattern.",
+        "Add a \"switch device\" column. Does switching do the same thing when stopped, playing and paused?"
       ],
       "checklist": [
         "States STOPPED, PLAYING, PAUSED (BUFFERING as an extension)",
         "Every (state, action) pair defined, including the no-ops",
         "State pattern: one class per state, each returning the next state",
-        "Side effects (start/pause audio) happen in the transition"
+        "Side effects (start/pause audio) happen in the transition",
+        "A switch-device action: playing stays playing, paused stays paused, at the same position"
       ]
     },
     {
@@ -86,13 +107,15 @@
       "doc": "steps/6.md",
       "hints": [
         "Who else wants to know the song changed? Lock screen, scrobbler, lyrics panel…",
-        "The audio thread fires \"track ended\" at the same moment the user taps Next. Trace what happens."
+        "The audio thread fires \"track ended\" at the same moment the user taps Next. Trace what happens.",
+        "Each device SDK has a different API. What pattern makes them all look like one `AudioOutput`?"
       ],
       "checklist": [
         "Observer for now-playing / scrobbling listeners",
-        "Adapter for outputs (speaker, Bluetooth, cast)",
+        "Adapter for outputs (speaker, Bluetooth, cast), with a sketch of one adapter",
         "Command for controls from keyboard, headset and remote",
-        "The track-ended vs. Next race and a fix (lock plus session token, or a single event loop)"
+        "The track-ended vs. Next race and a fix (lock plus session token, or a single event loop)",
+        "Device disconnect: serialised with everything else, pause first, then fall back to the speaker"
       ]
     },
     {
@@ -100,13 +123,15 @@
       "doc": "steps/7.md",
       "hints": [
         "Write `PlayQueue` first and make it pure (no audio, no threads). It's the part with real logic.",
-        "Then the three state classes, and finally `Player`, which just delegates."
+        "Then the three state classes, and finally `Player`, which just delegates.",
+        "For devices: `moveOutput` reads the old position, stops the old output, then `prepare`s the new one. Let each state decide whether to `resume()`."
       ],
       "checklist": [
         "PlayQueue with next/previous/shuffle and an index-based order",
         "State classes returning the next state",
         "Player delegating to state and queue under one lock",
-        "Listeners notified on song and state changes"
+        "Listeners notified on song and state changes",
+        "DeviceManager, one adapter, and Player.selectDevice / deviceDisconnected"
       ]
     },
     {
@@ -120,7 +145,8 @@
         "Crossfade / gapless",
         "Ads between songs on the free tier",
         "Play next / add to queue",
-        "Offline downloads"
+        "Offline downloads",
+        "Multi-room playback (Composite output)"
       ]
     }
   ]
