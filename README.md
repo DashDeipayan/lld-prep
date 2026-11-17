@@ -74,6 +74,7 @@ After the first run, nothing needs the network: no CDN, no telemetry, no account
 | **Lessons** | 24 | Dense, interview-focused reading with Mermaid class and sequence diagrams, plus code that switches between Java, Go and Python. |
 | **Coding exercises** | 31 | A Monaco editor (the editor from VS Code), *Run* to see your program's output, *Run tests* to see a pass/fail result and message for each hidden test, hints revealed one at a time, and a reference solution you can reveal once you've tried. |
 | **Build-alongs** | 2 | Parking Lot (6 steps) and Splitwise (5 steps). Each step explains one design decision, and you unlock the next step by passing its tests. |
+| **Design practice** | 4 | Guided interview simulations: Parking Lot, Music Player, Risk Management System and Notification System, 8 steps each (requirements → entities → class diagram → core flows → patterns → concurrency → code → follow-ups). For each step you write your own answer (autosaved), can open hints and tick a self-check list, then reveal the model answer. Code answers come in Java, Go and Python. |
 | **Quizzes** | 8 | Scenario-based multiple-choice questions with an explanation for every answer. The pass mark is 70%. |
 | **Timed mocks** | 6 | A countdown clock with hints hidden. When you finish, hidden tests run automatically and you score yourself on an interviewer rubric. Attempts are kept in a history. |
 | **Search** | | Full-text search across lessons, exercises, tutorials and quizzes, with snippets. Press <kbd>⌘/Ctrl K</kbd> or <kbd>/</kbd>. |
@@ -171,6 +172,8 @@ Every exercise has a problem statement, a starter, hidden tests and a reference 
 | Meeting Room Scheduler | medium | 60 |
 
 **Build-alongs:** Parking Lot (6 steps) and Splitwise (5 steps).
+
+**Design practice:** Parking Lot, Music Player, Risk Management System, Notification System. Content lives in `content/practice/<id>/` (`practice.json` with per-step hints and checklists, `intro.md`, and `steps/N.md` where `<!-- answer -->` separates the task from the model answer).
 
 **Mock problems:** Car Rental, Hotel Reservation, Task Board (Jira-lite) and Online Auction (eBay-lite). The two re-do mocks reuse Elevator and Movie Booking under time pressure.
 
@@ -404,7 +407,7 @@ Leave out `MONGODB_URI` and set `LLDPREP_PASSWORD` instead. Progress is then wri
 | Method & path | Purpose |
 |---|---|
 | `GET /api/plan` | Days, mocks, rubric and the content catalog |
-| `GET /api/lesson/{id}` · `/api/exercise/{id}` · `/api/tutorial/{id}` · `/api/quiz/{id}` | Content |
+| `GET /api/lesson/{id}` · `/api/exercise/{id}` · `/api/tutorial/{id}` · `/api/practice/{id}` · `/api/quiz/{id}` | Content |
 | `GET /api/solution/{kind}/{id}/{lang}` | Reference solution |
 | `GET /api/search?q=` | Full-text search |
 | `GET /api/toolchains` | Detected JDK, Go and Python versions |

@@ -29,6 +29,7 @@ export const api = {
   lesson: (id) => cached(`/api/lesson/${encodeURIComponent(id)}`),
   exercise: (id) => cached(`/api/exercise/${encodeURIComponent(id)}`),
   tutorial: (id) => cached(`/api/tutorial/${encodeURIComponent(id)}`),
+  practice: (id) => cached(`/api/practice/${encodeURIComponent(id)}`),
   quiz: (id) => cached(`/api/quiz/${encodeURIComponent(id)}`),
   solution: (kind, id, lang) => req('GET', `/api/solution/${kind}/${encodeURIComponent(id)}/${lang}`),
   search: (q) => req('GET', `/api/search?q=${encodeURIComponent(q)}`),

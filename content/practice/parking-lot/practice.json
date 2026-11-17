@@ -1,0 +1,126 @@
+{
+  "title": "Practice: Design a Parking Lot",
+  "summary": "Run the whole interview yourself, one step at a time: clarify, model, diagram, park/unpark flows, pricing and allocation strategies, concurrency, code and follow-ups.",
+  "difficulty": "medium",
+  "minutes": 75,
+  "tags": ["strategy", "observer", "concurrency", "classic"],
+  "related": [
+    { "type": "tutorial", "id": "parking-lot" },
+    { "type": "lesson", "id": "pattern-strategy" }
+  ],
+  "steps": [
+    {
+      "title": "Clarify the requirements",
+      "doc": "steps/1.md",
+      "hints": [
+        "Group your questions: **what** gets parked, **how** spots are chosen, **how** money works, **how many** gates.",
+        "Ask about *scope* explicitly too: payments, reservations, persistence, UI. Saying \"out of scope\" out loud is a signal of seniority."
+      ],
+      "checklist": [
+        "Vehicle types and spot sizes, and which fits where",
+        "Multiple floors and multiple entry/exit gates",
+        "How a ticket is issued and how the fee is computed",
+        "How a spot is chosen (and that it should be swappable)",
+        "A short, explicit out-of-scope list"
+      ]
+    },
+    {
+      "title": "Identify entities and enums",
+      "doc": "steps/2.md",
+      "hints": [
+        "Underline the nouns in your requirements. Each is a class, an enum, a field or noise.",
+        "Ask yourself: does `Car` behave differently from `Truck`, or does it just have different data?"
+      ],
+      "checklist": [
+        "Enums for VehicleType and SpotSize (not a Car/Truck class hierarchy)",
+        "Spot, Floor (or just a floor number), Ticket, Receipt",
+        "A ParkingLot facade that owns the spots",
+        "Interfaces for what varies: pricing and spot selection"
+      ]
+    },
+    {
+      "title": "Draw the class diagram",
+      "doc": "steps/3.md",
+      "hints": [
+        "Start from the facade (`ParkingLot`) and draw what it owns (composition) versus what it uses (association).",
+        "Put the interfaces on the diagram with their single method. That's what interviewers look for."
+      ],
+      "checklist": [
+        "ParkingLot composes spots; spots are not shared",
+        "PricingStrategy and SpotSelector as interfaces with implementations",
+        "Ticket and Receipt as immutable value objects",
+        "Multiplicities on the main relationships"
+      ]
+    },
+    {
+      "title": "Walk through park() and unpark()",
+      "doc": "steps/4.md",
+      "hints": [
+        "List the failure cases first: no fitting spot, plate already inside, unknown or reused ticket.",
+        "Which maps do you need for O(1) unpark? Think ticketId → ?, plate → ?"
+      ],
+      "checklist": [
+        "park: reject duplicate plate, select spot, occupy, issue ticket",
+        "unpark: look up ticket, compute fee, free the spot, remove the ticket",
+        "An index from ticket id to ticket/spot, and a set of plates inside",
+        "Clock is injected so time-based fees are testable"
+      ]
+    },
+    {
+      "title": "Make it extensible: pricing, allocation, display board",
+      "doc": "steps/5.md",
+      "hints": [
+        "Which three things will the interviewer ask you to change? Each one becomes a seam.",
+        "The display board must not be polled. Who should tell it that a spot changed?"
+      ],
+      "checklist": [
+        "Strategy for pricing (hourly, flat, weekend…)",
+        "Strategy for spot selection (nearest, fill-top-first, EV-first…)",
+        "Observer for display boards and other listeners",
+        "Open/Closed: new behaviour = new class, no edits to ParkingLot"
+      ]
+    },
+    {
+      "title": "Concurrency and edge cases",
+      "doc": "steps/6.md",
+      "hints": [
+        "Two gates call `park()` at the same instant and both see spot F1-M1 free. What happens?",
+        "Compare one lock for the whole lot vs. a lock per floor vs. compare-and-set per spot."
+      ],
+      "checklist": [
+        "The check-then-act race on spot selection is named",
+        "A concrete fix (lot lock, per-floor lock or CAS on the spot) with trade-offs",
+        "Listeners notified outside the lock",
+        "Edge cases: lost ticket, double unpark, lot full, clock skew"
+      ]
+    },
+    {
+      "title": "Code the core",
+      "doc": "steps/7.md",
+      "hints": [
+        "Write the interfaces first, then `Spot`, then `ParkingLot`. Leave `main` and printing for last (or skip them).",
+        "Per started hour: `hours = max(1, ceil(minutes / 60))`."
+      ],
+      "checklist": [
+        "Compiles in your language, with enums and interfaces",
+        "park/unpark with the failure cases from step 4",
+        "Strategies injected through the constructor",
+        "A lock (or equivalent) around the state that changes"
+      ]
+    },
+    {
+      "title": "Answer the follow-ups",
+      "doc": "steps/8.md",
+      "hints": [
+        "For each follow-up say *which class changes* and *which doesn't*. That is the whole point of the question.",
+        "It's fine to say \"that needs persistence, so this becomes a service with a DB\". Just say where the boundary is."
+      ],
+      "checklist": [
+        "EV charging spots without touching existing selectors",
+        "Reservations / pre-booking",
+        "Multiple lots / horizontal scaling",
+        "Payment methods and failed payments"
+      ]
+    }
+  ]
+}

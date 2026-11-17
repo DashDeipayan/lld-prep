@@ -1,0 +1,130 @@
+{
+  "title": "Practice: Design a Notification System",
+  "summary": "Email, SMS, push and in-app, step by step: templates, user preferences, channel adapters, priorities, retries with backoff, idempotency, rate limits and delivery tracking.",
+  "difficulty": "medium",
+  "minutes": 75,
+  "tags": ["strategy", "adapter", "observer", "reliability"],
+  "related": [
+    { "type": "exercise", "id": "decorator-notifiers" },
+    { "type": "exercise", "id": "solid-notifications" },
+    { "type": "exercise", "id": "pubsub-broker" },
+    { "type": "exercise", "id": "rate-limiter" }
+  ],
+  "steps": [
+    {
+      "title": "Clarify the requirements",
+      "doc": "steps/1.md",
+      "hints": [
+        "Who calls the system, and with what? A raw message, or an event plus a template id?",
+        "Think about the user: what would annoy them (spam, 3 a.m. pings, duplicates) and what must never be lost (OTPs)?"
+      ],
+      "checklist": [
+        "Channels: email, SMS, push, in-app",
+        "Templates with parameters (and localisation, at least mentioned)",
+        "User preferences: per-channel and per-category opt-outs, quiet hours",
+        "Priorities: transactional (OTP) vs. marketing",
+        "Retries, no duplicates, delivery status tracking"
+      ]
+    },
+    {
+      "title": "Identify entities",
+      "doc": "steps/2.md",
+      "hints": [
+        "Separate the *request* (what a caller asks for) from each *delivery* (one channel, one attempt history).",
+        "Which part talks to Twilio/SES/FCM, and how do you keep their APIs out of your core?"
+      ],
+      "checklist": [
+        "Notification request vs. per-channel Delivery with status",
+        "Template and TemplateStore/renderer",
+        "UserPreferences / PreferenceStore",
+        "ChannelSender interface with provider adapters",
+        "RetryPolicy and a queue/dispatcher"
+      ]
+    },
+    {
+      "title": "Draw the class diagram",
+      "doc": "steps/3.md",
+      "hints": [
+        "The service is a facade. Senders are behind one interface, keyed by channel.",
+        "Where do the checks that can *skip* a delivery go: preferences, quiet hours, rate limits?"
+      ],
+      "checklist": [
+        "NotificationService facade → queue, workers",
+        "ChannelSender interface with Email/SMS/Push/InApp implementations",
+        "A filter chain for preferences / quiet hours / rate limit",
+        "Delivery status tracked and observable"
+      ]
+    },
+    {
+      "title": "Walk through the send flow",
+      "doc": "steps/4.md",
+      "hints": [
+        "Should the caller wait for the SMS to be sent? What does the API return?",
+        "Order the checks: what should run before rendering a template, and what after?"
+      ],
+      "checklist": [
+        "Accept → validate → dedupe → enqueue, returning an id quickly (async)",
+        "Worker: preferences/filters → render → send through the channel adapter",
+        "Retry on transient errors only; record status per channel",
+        "Priority queues so OTPs aren't stuck behind marketing"
+      ]
+    },
+    {
+      "title": "Patterns: channels, filters, templates",
+      "doc": "steps/5.md",
+      "hints": [
+        "Adding WhatsApp should be a new class plus registration. What makes that true?",
+        "Preferences, quiet hours, rate limits and dedupe are a sequence of yes/no checks, which suggests one well-known pattern."
+      ],
+      "checklist": [
+        "Strategy/Adapter: ChannelSender per channel/provider, registered in a map",
+        "Chain of Responsibility for delivery filters",
+        "Decorator for retry / failover / metrics around a sender",
+        "Observer for delivery status events; Builder for complex requests"
+      ]
+    },
+    {
+      "title": "Reliability and concurrency",
+      "doc": "steps/6.md",
+      "hints": [
+        "The order service retries its API call after a timeout. The first call actually succeeded. What happens to the customer?",
+        "Two workers pick up the same message (at-least-once queue). Then what?"
+      ],
+      "checklist": [
+        "Idempotency key with an atomic check-and-mark",
+        "Exponential backoff with jitter; retryable vs. permanent errors",
+        "Dead-letter queue after max attempts",
+        "Per-user and per-provider rate limiting",
+        "Delivery state machine (PENDING → SENT → DELIVERED / FAILED)"
+      ]
+    },
+    {
+      "title": "Code the core",
+      "doc": "steps/7.md",
+      "hints": [
+        "Write `ChannelSender`, `TemplateStore.render` and the preference check first, then the retry loop.",
+        "Inject the sleep function so the retry logic is testable without waiting."
+      ],
+      "checklist": [
+        "Senders registered by channel (no switch on channel type)",
+        "Preference and opt-out checks before rendering",
+        "Retry with exponential backoff, only for retryable errors",
+        "Atomic idempotency check; per-channel results"
+      ]
+    },
+    {
+      "title": "Answer the follow-ups",
+      "doc": "steps/8.md",
+      "hints": [
+        "Several of these are a new filter, a new sender decorator or a new queue. Say which.",
+        "Don't forget the user's experience: digests, timezones, unsubscribe links."
+      ],
+      "checklist": [
+        "Scheduled notifications",
+        "Provider failover",
+        "Digests / batching",
+        "Adding a new channel (WhatsApp)"
+      ]
+    }
+  ]
+}

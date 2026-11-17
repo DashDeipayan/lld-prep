@@ -1,0 +1,127 @@
+{
+  "title": "Practice: Design a Music Player",
+  "summary": "A Spotify-style player done step by step: library and playlists, a State-pattern player, a play queue with shuffle and repeat, observers, output adapters and the track-ended race.",
+  "difficulty": "medium",
+  "minutes": 75,
+  "tags": ["state", "observer", "strategy", "command"],
+  "related": [
+    { "type": "lesson", "id": "pattern-state" },
+    { "type": "lesson", "id": "pattern-command" },
+    { "type": "lesson", "id": "pattern-observer" }
+  ],
+  "steps": [
+    {
+      "title": "Clarify the requirements",
+      "doc": "steps/1.md",
+      "hints": [
+        "\"Music player\" can mean a streaming service (system design) or the player object (LLD). Pin that down first.",
+        "Walk through what a user does with the buttons: play, pause, next, previous, shuffle, repeat. Each one is a requirement."
+      ],
+      "checklist": [
+        "Scope pinned: in-process player and library, not a streaming backend",
+        "Library, playlists and a play queue",
+        "Playback controls including previous's \"restart if > 3s\" behaviour",
+        "Shuffle and repeat (off / one / all) semantics",
+        "Something that reacts to playback: UI, now-playing, scrobbling"
+      ]
+    },
+    {
+      "title": "Identify entities and enums",
+      "doc": "steps/2.md",
+      "hints": [
+        "Separate **catalog** objects (song, album, playlist) from **playback** objects (queue, player, output).",
+        "Is a playlist the same thing as the queue? What happens to the playlist when you shuffle?"
+      ],
+      "checklist": [
+        "Song as an immutable value object; Album/Artist/Playlist in the catalog",
+        "PlayQueue separate from Playlist",
+        "Player with an explicit state",
+        "RepeatMode enum, and an AudioOutput abstraction"
+      ]
+    },
+    {
+      "title": "Draw the class diagram",
+      "doc": "steps/3.md",
+      "hints": [
+        "The Player is the context object. What does it *own* and what does it *use*?",
+        "Which collaborators are interfaces so you can swap them in tests?"
+      ],
+      "checklist": [
+        "Player → PlayQueue, PlayerState, AudioOutput, listeners",
+        "Playlist holds song references, the queue holds playback order",
+        "Interfaces: PlayerState, AudioOutput, PlayerListener",
+        "Multiplicities (playlist * — * song)"
+      ]
+    },
+    {
+      "title": "Model the player as a state machine",
+      "doc": "steps/4.md",
+      "hints": [
+        "Draw a table with the states as rows and the buttons as columns. Fill every cell.",
+        "If the cells are full of `if (state == …)` checks spread over many methods, that's the signal for the State pattern."
+      ],
+      "checklist": [
+        "States STOPPED, PLAYING, PAUSED (BUFFERING as an extension)",
+        "Every (state, action) pair defined, including the no-ops",
+        "State pattern: one class per state, each returning the next state",
+        "Side effects (start/pause audio) happen in the transition"
+      ]
+    },
+    {
+      "title": "Design the queue: next, previous, shuffle, repeat",
+      "doc": "steps/5.md",
+      "hints": [
+        "Store an **order** array of indices into the song list. Shuffle permutes the order, not the songs.",
+        "What should happen to the current song when shuffle is turned on? And when it's turned off again?"
+      ],
+      "checklist": [
+        "next() for each repeat mode, separating automatic advance from a user skip",
+        "previous() restarts the song if more than ~3s in",
+        "Shuffle with Fisher–Yates, current song stays current",
+        "Un-shuffle returns to the original order at the same song"
+      ]
+    },
+    {
+      "title": "Extensibility and concurrency",
+      "doc": "steps/6.md",
+      "hints": [
+        "Who else wants to know the song changed? Lock screen, scrobbler, lyrics panel…",
+        "The audio thread fires \"track ended\" at the same moment the user taps Next. Trace what happens."
+      ],
+      "checklist": [
+        "Observer for now-playing / scrobbling listeners",
+        "Adapter for outputs (speaker, Bluetooth, cast)",
+        "Command for controls from keyboard, headset and remote",
+        "The track-ended vs. Next race and a fix (lock plus session token, or a single event loop)"
+      ]
+    },
+    {
+      "title": "Code the core",
+      "doc": "steps/7.md",
+      "hints": [
+        "Write `PlayQueue` first and make it pure (no audio, no threads). It's the part with real logic.",
+        "Then the three state classes, and finally `Player`, which just delegates."
+      ],
+      "checklist": [
+        "PlayQueue with next/previous/shuffle and an index-based order",
+        "State classes returning the next state",
+        "Player delegating to state and queue under one lock",
+        "Listeners notified on song and state changes"
+      ]
+    },
+    {
+      "title": "Answer the follow-ups",
+      "doc": "steps/8.md",
+      "hints": [
+        "Name the class that changes and the classes that don't.",
+        "Several of these are new *states* or new *listeners*. Spotting that is the point."
+      ],
+      "checklist": [
+        "Crossfade / gapless",
+        "Ads between songs on the free tier",
+        "Play next / add to queue",
+        "Offline downloads"
+      ]
+    }
+  ]
+}

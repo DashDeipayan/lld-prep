@@ -11,6 +11,7 @@ import { resetMermaidTheme } from './markdown.js';
 import { ExerciseView, TutorialView } from './code.js';
 import { QuizView } from './quiz.js';
 import { MocksView, MockView } from './mock.js';
+import { PracticeList, PracticeView } from './practice.js';
 import { SignIn, ProviderButton, PROVIDER_LABEL, startProvider, takeHashParam } from './auth.js';
 
 let PLAN = null;
@@ -49,6 +50,7 @@ function Sidebar({ route, open, onClose }) {
     <nav>
       ${link('#/', 'home', 'Today', top === '')}
       ${link('#/library', 'book', 'Library', top === 'library')}
+      ${link('#/practice', 'pencil', 'Design practice', top === 'practice')}
       ${link('#/mocks', 'timer', 'Mock interviews', top === 'mocks' || top === 'mock')}
       ${link('#/bookmarks', 'bookmark', 'Bookmarks', top === 'bookmarks')}
       ${link('#/settings', 'settings', 'Settings & data', top === 'settings')}
@@ -251,7 +253,7 @@ function Library() {
   useAppState();
   const c = PLAN.catalog;
   const [tab, setTab] = useState('exercises');
-  const tabs = [['exercises', 'Exercises', 'exercise'], ['tutorials', 'Build-alongs', 'tutorial'], ['lessons', 'Lessons', 'lesson'], ['quizzes', 'Quizzes', 'quiz']];
+  const tabs = [['exercises', 'Exercises', 'exercise'], ['tutorials', 'Build-alongs', 'tutorial'], ['practice', 'Design practice', 'practice'], ['lessons', 'Lessons', 'lesson'], ['quizzes', 'Quizzes', 'quiz']];
   const type = tabs.find((t) => t[0] === tab)[2];
   return html`<div class="page">
     <h1>Library</h1>
@@ -435,6 +437,7 @@ function App() {
     case 'lesson': page = html`<${LessonView} id=${p1} anchor=${anchor} key=${p1} />`; break;
     case 'exercise': page = html`<${ExerciseView} id=${p1} key=${p1} />`; break;
     case 'tutorial': page = html`<${TutorialView} id=${p1} key=${p1} anchor=${anchor} />`; break;
+    case 'practice': page = p1 ? html`<${PracticeView} id=${p1} key=${p1} />` : html`<${PracticeList} />`; break;
     case 'quiz': page = html`<${QuizView} id=${p1} key=${p1} />`; break;
     case 'mocks': page = html`<${MocksView} />`; break;
     case 'mock': page = html`<${MockView} id=${p1} key=${p1} />`; break;

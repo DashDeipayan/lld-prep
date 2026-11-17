@@ -299,6 +299,13 @@ func (a *app) routes(mux *http.ServeMux) {
 		}
 		http.NotFound(w, r)
 	})
+	mux.HandleFunc("GET /api/practice/{id}", func(w http.ResponseWriter, r *http.Request) {
+		if p, ok := a.cs().Practices[r.PathValue("id")]; ok {
+			writeJSON(w, p)
+			return
+		}
+		http.NotFound(w, r)
+	})
 	mux.HandleFunc("GET /api/quiz/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if q, ok := a.cs().Quizzes[r.PathValue("id")]; ok {
 			writeJSON(w, q)
@@ -445,6 +452,7 @@ func catalog(cs *content.Store) map[string]any {
 	}
 	list := func(n int) []entry { return make([]entry, 0, n) }
 	lessons, exercises, tutorials, quizzes := list(len(cs.Lessons)), list(len(cs.Exercises)), list(len(cs.Tutorials)), list(len(cs.Quizzes))
+	practice := list(len(cs.Practices))
 	for _, l := range cs.Lessons {
 		lessons = append(lessons, entry{ID: l.ID, Title: l.Title, Summary: l.Summary})
 	}
@@ -457,10 +465,13 @@ func catalog(cs *content.Store) map[string]any {
 	for _, q := range cs.Quizzes {
 		quizzes = append(quizzes, entry{ID: q.ID, Title: q.Title, Summary: q.Summary})
 	}
-	for _, l := range [][]entry{lessons, exercises, tutorials, quizzes} {
+	for _, p := range cs.Practices {
+		practice = append(practice, entry{ID: p.ID, Title: p.Title, Summary: p.Summary, Difficulty: p.Difficulty, Minutes: p.Minutes, Tags: p.Tags})
+	}
+	for _, l := range [][]entry{lessons, exercises, tutorials, quizzes, practice} {
 		sort.Slice(l, func(i, j int) bool { return l[i].Title < l[j].Title })
 	}
-	return map[string]any{"lessons": lessons, "exercises": exercises, "tutorials": tutorials, "quizzes": quizzes}
+	return map[string]any{"lessons": lessons, "exercises": exercises, "tutorials": tutorials, "quizzes": quizzes, "practice": practice}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

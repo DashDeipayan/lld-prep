@@ -10,6 +10,7 @@ const defaults = () => ({
   quiz: {},          // id -> { best, last, total, at }
   bookmarks: [],     // { key, type, id, title, anchor, label, at }
   tutorialStep: {},  // "id:lang" -> highest passed step
+  practiceStep: {},  // practice id -> highest step marked done
   passed: {},        // "kind:id:lang" -> ISO timestamp (all tests green)
   mocks: [],         // attempts
 });
