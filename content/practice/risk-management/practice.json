@@ -1,0 +1,129 @@
+{
+  "title": "Practice: Design a Risk Management System",
+  "summary": "A fintech favourite: a transaction risk engine with pluggable rules, scoring and hard blocks, sliding-window velocity checks, hot-reloadable config, audit and manual review, done one step at a time.",
+  "difficulty": "hard",
+  "minutes": 90,
+  "tags": ["strategy", "rule-engine", "concurrency", "fintech"],
+  "related": [
+    { "type": "lesson", "id": "money-and-ledgers" },
+    { "type": "exercise", "id": "rate-limiter" },
+    { "type": "lesson", "id": "pattern-strategy" }
+  ],
+  "steps": [
+    {
+      "title": "Clarify the requirements",
+      "doc": "steps/1.md",
+      "hints": [
+        "\"Risk management\" is ambiguous: payments fraud, trading limits, credit. Ask which one, then commit.",
+        "Ask what the engine *returns*. A yes/no? A score? Reasons? Who acts on a \"maybe\"?"
+      ],
+      "checklist": [
+        "Domain pinned down (payment transaction risk) and where the engine sits in the flow",
+        "Decision outcomes: ALLOW / REVIEW / BLOCK, with reasons",
+        "Concrete rule types: amount, velocity, blocklist, device, geography",
+        "Rules configurable without a deploy",
+        "Latency budget, audit trail, and behaviour when a rule fails"
+      ]
+    },
+    {
+      "title": "Identify entities",
+      "doc": "steps/2.md",
+      "hints": [
+        "Split the nouns into *input* (what's evaluated), *logic* (rules, policy) and *output* (results, decision, audit).",
+        "What state does a velocity rule need that the other rules don't?"
+      ],
+      "checklist": [
+        "Transaction and a context/profile as immutable inputs",
+        "Rule interface; RuleResult with score, verdict and reason",
+        "A DecisionPolicy separate from the rules",
+        "Stateful stores (velocity counters, lists) separate from rule logic",
+        "Assessment as the auditable output"
+      ]
+    },
+    {
+      "title": "Draw the class diagram",
+      "doc": "steps/3.md",
+      "hints": [
+        "The engine is the hub. Rules are many small strategies around it.",
+        "Where does configuration come from, and who builds the rule objects from it?"
+      ],
+      "checklist": [
+        "RiskEngine → Rule (many), DecisionPolicy, listeners",
+        "Concrete rules implementing one interface",
+        "A factory/registry building rules from config",
+        "Observers for audit log, review queue and alerts"
+      ]
+    },
+    {
+      "title": "Rule evaluation and the decision",
+      "doc": "steps/4.md",
+      "hints": [
+        "There are two kinds of signal: \"this alone is enough to block\" and \"this adds suspicion\". Model both.",
+        "What happens if a rule throws or times out? Allow (fail open) or block (fail closed)?"
+      ],
+      "checklist": [
+        "Each rule returns a score and an optional hard verdict",
+        "Total score mapped through thresholds; the decision is max(score-based, hard verdict)",
+        "Short-circuit on a hard BLOCK, with cheap rules ordered first",
+        "Rule errors handled explicitly (to REVIEW), never silently allowed",
+        "Every rule hit kept, with its reason, for audit"
+      ]
+    },
+    {
+      "title": "Velocity checks: sliding windows",
+      "doc": "steps/5.md",
+      "hints": [
+        "\"More than 5 transactions in 10 minutes per user.\" What do you store per user?",
+        "Compare a fixed window, a sliding log and sliding buckets for memory and accuracy."
+      ],
+      "checklist": [
+        "Sliding-window log (deque of timestamps) with eviction",
+        "Trade-off with bucketed counters for high volume",
+        "Key design: per user, per card, per device, per IP",
+        "Whether to count attempts or only approved transactions"
+      ]
+    },
+    {
+      "title": "Extensibility, config and concurrency",
+      "doc": "steps/6.md",
+      "hints": [
+        "Two payments from the same user arrive at once, and the limit is 5 per 10 minutes with 4 already used. Trace it.",
+        "Rules get updated while 1,000 requests are mid-evaluation. What do they see?"
+      ],
+      "checklist": [
+        "Atomic record-and-count (per-key lock / compute / Redis INCR or Lua)",
+        "Immutable config snapshot swapped atomically (copy-on-write)",
+        "Composite/Specification for AND/OR rules from config",
+        "Decorators for timeouts, metrics and shadow mode"
+      ]
+    },
+    {
+      "title": "Code the core",
+      "doc": "steps/7.md",
+      "hints": [
+        "Start with `Rule`, `RuleResult` and `Decision`, then the engine loop, then two or three concrete rules.",
+        "The velocity store needs one method only: `recordAndCount(key, at, window)`."
+      ],
+      "checklist": [
+        "Rule interface and three or more concrete rules",
+        "Engine combining scores and hard verdicts, with short-circuit",
+        "Thread-safe velocity store",
+        "Config snapshot that can be swapped at runtime"
+      ]
+    },
+    {
+      "title": "Answer the follow-ups",
+      "doc": "steps/8.md",
+      "hints": [
+        "For each one, decide whether it's a new rule, a new policy, a new listener or a new store.",
+        "Think about what an ops or risk analyst needs to do without an engineer."
+      ],
+      "checklist": [
+        "Shadow / dry-run mode for a new rule",
+        "ML model score as just another rule",
+        "Per-merchant thresholds",
+        "Scaling across many instances"
+      ]
+    }
+  ]
+}

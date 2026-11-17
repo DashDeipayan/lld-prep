@@ -74,6 +74,41 @@ type Tutorial struct {
 	CodeUnit
 }
 
+// PracticeStep is one stage of a guided design practice: a task the learner
+// attempts on their own, hints, a self-check list and the model answer.
+type PracticeStep struct {
+	Title     string   `json:"title"`
+	Doc       string   `json:"doc,omitempty"`
+	Hints     []string `json:"hints"`
+	Checklist []string `json:"checklist"`
+	Task      string   `json:"task"`
+	Answer    string   `json:"answer"`
+}
+
+// PracticeLink points at related course material (a tutorial, exercise...).
+type PracticeLink struct {
+	Type  string `json:"type"`
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"` // filled in by the loader
+}
+
+// Practice is a step-by-step design walkthrough the learner does themselves
+// (requirements, entities, diagram, flows, patterns, concurrency, code).
+type Practice struct {
+	ID         string         `json:"id"`
+	Title      string         `json:"title"`
+	Summary    string         `json:"summary"`
+	Difficulty string         `json:"difficulty"`
+	Minutes    int            `json:"minutes"`
+	Tags       []string       `json:"tags"`
+	Related    []PracticeLink `json:"related"`
+	Intro      string         `json:"intro"`
+	Steps      []PracticeStep `json:"steps"`
+}
+
+// answerMarker separates a practice step's task from its model answer.
+const answerMarker = "<!-- answer -->"
+
 type Question struct {
 	Q       string   `json:"q"`
 	Code    string   `json:"code,omitempty"`
@@ -111,6 +146,7 @@ type Store struct {
 	Lessons   map[string]*Lesson
 	Exercises map[string]*Exercise
 	Tutorials map[string]*Tutorial
+	Practices map[string]*Practice
 	Quizzes   map[string]*Quiz
 	Mocks     []*Mock
 	Rubric    []RubricItem
@@ -129,6 +165,7 @@ func Load(fsys fs.FS) (*Store, error) {
 		Lessons:   map[string]*Lesson{},
 		Exercises: map[string]*Exercise{},
 		Tutorials: map[string]*Tutorial{},
+		Practices: map[string]*Practice{},
 		Quizzes:   map[string]*Quiz{},
 	}
 	if err := readJSON(fsys, "plan.json", &s.Plan); err != nil {
@@ -147,6 +184,9 @@ func Load(fsys fs.FS) (*Store, error) {
 		return nil, err
 	}
 	if err := s.loadQuizzes(fsys); err != nil {
+		return nil, err
+	}
+	if err := s.loadPractices(fsys); err != nil {
 		return nil, err
 	}
 	if err := s.loadMocks(fsys); err != nil {
@@ -315,6 +355,55 @@ func (s *Store) loadTutorials(fsys fs.FS) error {
 	return nil
 }
 
+func (s *Store) loadPractices(fsys fs.FS) error {
+	entries, err := fs.ReadDir(fsys, "practice")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := path.Join("practice", e.Name())
+		p := &Practice{}
+		if err := readJSON(fsys, path.Join(dir, "practice.json"), p); err != nil {
+			return err
+		}
+		p.ID = e.Name()
+		intro, err := fs.ReadFile(fsys, path.Join(dir, "intro.md"))
+		if err != nil {
+			return err
+		}
+		p.Intro = string(intro)
+		if len(p.Steps) == 0 {
+			return fmt.Errorf("practice %s: no steps", p.ID)
+		}
+		for i := range p.Steps {
+			st := &p.Steps[i]
+			b, err := fs.ReadFile(fsys, path.Join(dir, st.Doc))
+			if err != nil {
+				return err
+			}
+			task, answer, ok := strings.Cut(strings.ReplaceAll(string(b), "\r\n", "\n"), answerMarker)
+			if !ok {
+				return fmt.Errorf("practice %s step %d: missing %q separator", p.ID, i+1, answerMarker)
+			}
+			st.Task, st.Answer = strings.TrimSpace(task), strings.TrimSpace(answer)
+			if st.Hints == nil {
+				st.Hints = []string{}
+			}
+			if st.Checklist == nil {
+				st.Checklist = []string{}
+			}
+		}
+		s.Practices[p.ID] = p
+	}
+	return nil
+}
+
 func (s *Store) loadQuizzes(fsys fs.FS) error {
 	entries, err := fs.ReadDir(fsys, "quizzes")
 	if errors.Is(err, fs.ErrNotExist) {
@@ -373,6 +462,10 @@ func (s *Store) Title(typ, id string) (string, bool) {
 		if q, ok := s.Quizzes[id]; ok {
 			return q.Title, true
 		}
+	case "practice":
+		if p, ok := s.Practices[id]; ok {
+			return p.Title, true
+		}
 	case "mock":
 		for _, m := range s.Mocks {
 			if m.ID == id {
@@ -392,6 +485,16 @@ func (s *Store) resolvePlan() error {
 				return fmt.Errorf("plan day %d: unknown %s %q", s.Plan.Days[di].Day, it.Type, it.ID)
 			}
 			it.Title = t
+		}
+	}
+	for _, p := range s.Practices {
+		for i := range p.Related {
+			l := &p.Related[i]
+			t, ok := s.Title(l.Type, l.ID)
+			if !ok {
+				return fmt.Errorf("practice %s: unknown related %s %q", p.ID, l.Type, l.ID)
+			}
+			l.Title = t
 		}
 	}
 	return nil
@@ -446,6 +549,14 @@ func (s *Store) buildIndex() {
 			b.WriteString("\n" + st.Title + "\n" + st.Markdown)
 		}
 		add("tutorial", t.ID, t.Title, b.String())
+	}
+	for _, p := range s.Practices {
+		var b strings.Builder
+		b.WriteString(p.Summary + "\n" + strings.Join(p.Tags, " ") + "\n" + p.Intro)
+		for _, st := range p.Steps {
+			b.WriteString("\n" + st.Title + "\n" + st.Task + "\n" + st.Answer)
+		}
+		add("practice", p.ID, p.Title, b.String())
 	}
 	for _, q := range s.Quizzes {
 		var b strings.Builder
